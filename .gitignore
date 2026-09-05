@@ -1,0 +1,33 @@
+# deps & build
+node_modules
+.vercel
+.tanstack
+.output
+dist
+*.local
+
+# logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# sandbox / local-only
+.project_id
+.node_modules.lock
+artifacts
+screenshots
+attachments
+AGENTS.md
+.grok/preview.log
+.grok/og-pending
+.grok/card-raw.jpg
+.grok/favicon-*.png
+.grok/favicon-qc.*
+.grok/skills
+.grok/references
+.grok/status
+
+# env (never commit secrets)
+.env
+.env.*
+!.env.example
