@@ -1,0 +1,72 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --color-paper: #f6f1e8;
+  --color-paper-2: #efe7d8;
+  --color-paper-3: #e6dcc8;
+  --color-ink: #1b2a4a;
+  --color-ink-soft: #3d4f73;
+  --color-muted: #7a6f5f;
+  --color-line: #e2d8c8;
+  --color-terracotta: #e07a5f;
+  --color-terracotta-dark: #c45c42;
+  --color-sage: #6b8f71;
+  --color-sage-dark: #4f7356;
+  --color-gold: #d4a373;
+  --color-danger: #b84a3a;
+  --color-navy: #121c33;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #e07a5f33;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.grain {
+  background-image: radial-gradient(rgba(27, 42, 74, 0.04) 0.6px, transparent 0.6px);
+  background-size: 7px 7px;
+}
+
+.serif {
+  font-family: var(--font-serif);
+}
+
+.ticket {
+  background:
+    radial-gradient(circle at 0 50%, transparent 10px, white 10.5px) left / 12px 100% no-repeat,
+    radial-gradient(circle at 100% 50%, transparent 10px, white 10.5px) right / 12px 100% no-repeat,
+    white;
+}
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #d9e2d0;
+}
+
+@media print {
+  aside, header, nav, .no-print { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  body { background: white; }
+}
