@@ -7,7 +7,7 @@ const features = [
   { icon: Wallet, title: "Live money", body: "Categorized spend, remaining budget, and a ring that turns when you overshoot." },
   { icon: LineChart, title: "Insights", body: "Nights, cities, and where the money actually went — across every trip you’ve kept." },
   { icon: Share2, title: "Shareable briefing", body: "A public itinerary link for the people meeting you. No account required on their side." },
-  { icon: Compass, title: "Weather + papers", body: "Seven-day forecast per stop, plus passport / visa / ticket records with expiry." },
+  { icon: Compass, title: "AI days + weather", body: "Generate a preview itinerary per stop, accept what you want, and pull a forecast onto the map." },
 ];
 
 const steps = [
@@ -23,7 +23,7 @@ export function Landing() {
         <img src="/art/hero.jpg" alt="" className="h-[78vh] min-h-[520px] w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/55 to-navy/20" />
         <div className="absolute inset-0 flex flex-col justify-end p-8 sm:p-14">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-terracotta">Smart travel companion · v1.2</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-terracotta">Smart travel companion · v1.3</p>
           <h1 className="serif mt-4 max-w-2xl text-5xl leading-[1.02] text-white sm:text-7xl">
             The trip, held
             <br />
@@ -45,8 +45,8 @@ export function Landing() {
 
       <section className="mx-auto grid max-w-6xl gap-px overflow-hidden rounded-[1.8rem] border border-line bg-line sm:grid-cols-4 mt-8">
         {[
-          ["48", "functional reqs"],
-          ["10", "system features"],
+          ["58", "functional reqs"],
+          ["12", "system features"],
           ["2", "user roles"],
           ["∞", "trips per traveler"],
         ].map(([n, l]) => (

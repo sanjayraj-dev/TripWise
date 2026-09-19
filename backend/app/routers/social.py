@@ -1,7 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
@@ -15,7 +14,7 @@ from app.core.access import (
     trip_options,
 )
 from app.core.deps import get_traveler
-from app.core.geo import forecast
+from app.core.geo import forecast, nearby_places
 from app.db.session import get_db
 from app.models.member import TripMember
 from app.models.message import ChatMessage
@@ -204,37 +203,7 @@ def nearby(destination_id: int, kind: str = "restaurant", db: Session = Depends(
     dest = load_destination(db, destination_id, user)
     if dest.lat is None or dest.lng is None:
         return []
-    amenity = {
-        "restaurant": "restaurant",
-        "cafe": "cafe",
-        "hospital": "hospital",
-        "atm": "atm",
-        "hotel": "hotel",
-        "pharmacy": "pharmacy",
-    }.get(kind, "restaurant")
-    query = f'[out:json][timeout:12];node["amenity"="{amenity}"](around:900,{dest.lat},{dest.lng});out 12;'
-    try:
-        res = httpx.post("https://overpass-api.de/api/interpreter", content=query, timeout=14.0)
-        res.raise_for_status()
-        elements = res.json().get("elements") or []
-    except Exception:
-        return []
-    out = []
-    for el in elements[:12]:
-        tags = el.get("tags") or {}
-        name = tags.get("name")
-        if not name:
-            continue
-        out.append(
-            {
-                "name": name,
-                "kind": amenity,
-                "lat": el.get("lat"),
-                "lng": el.get("lon"),
-                "extra": tags.get("cuisine") or tags.get("opening_hours") or "",
-            }
-        )
-    return out
+    return nearby_places(dest.lat, dest.lng, kind)
 
 
 @router.get("/api/trips/{trip_id}/alerts")

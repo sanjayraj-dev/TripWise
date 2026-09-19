@@ -1,3 +1,7 @@
+"""OpenStreetMap / Nominatim, Open-Meteo, and Overpass adapters."""
+
+from __future__ import annotations
+
 import httpx
 
 WEATHER_LABELS = {
@@ -16,8 +20,36 @@ WEATHER_LABELS = {
     95: "Thunderstorm",
 }
 
+NOMINATIM_HEADERS = {"User-Agent": "TripWise/1.3 (academic travel planner)"}
 
-def geocode(city: str, country: str) -> tuple[float | None, float | None]:
+
+def _nominatim(city: str, country: str) -> tuple[float | None, float | None]:
+    try:
+        res = httpx.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"city": city, "country": country, "format": "json", "limit": 1},
+            headers=NOMINATIM_HEADERS,
+            timeout=6.0,
+        )
+        res.raise_for_status()
+        rows = res.json() or []
+        if not rows:
+            res = httpx.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": f"{city}, {country}", "format": "json", "limit": 1},
+                headers=NOMINATIM_HEADERS,
+                timeout=6.0,
+            )
+            res.raise_for_status()
+            rows = res.json() or []
+        if not rows:
+            return None, None
+        return float(rows[0]["lat"]), float(rows[0]["lon"])
+    except Exception:
+        return None, None
+
+
+def _open_meteo_geocode(city: str, country: str) -> tuple[float | None, float | None]:
     try:
         res = httpx.get(
             "https://geocoding-api.open-meteo.com/v1/search",
@@ -27,12 +59,21 @@ def geocode(city: str, country: str) -> tuple[float | None, float | None]:
         res.raise_for_status()
         results = res.json().get("results") or []
         country_l = country.lower()
-        pick = next((r for r in results if country_l in str(r.get("country", "")).lower()), None) or (results[0] if results else None)
+        pick = next((r for r in results if country_l in str(r.get("country", "")).lower()), None) or (
+            results[0] if results else None
+        )
         if not pick:
             return None, None
         return float(pick["latitude"]), float(pick["longitude"])
     except Exception:
         return None, None
+
+
+def geocode(city: str, country: str) -> tuple[float | None, float | None]:
+    lat, lng = _nominatim(city, country)
+    if lat is not None:
+        return lat, lng
+    return _open_meteo_geocode(city, country)
 
 
 def forecast(lat: float, lng: float) -> list[dict]:
@@ -67,3 +108,41 @@ def forecast(lat: float, lng: float) -> list[dict]:
         return out
     except Exception:
         return []
+
+
+def nearby_places(lat: float, lng: float, kind: str = "restaurant") -> list[dict]:
+    amenity = {
+        "restaurant": "restaurant",
+        "cafe": "cafe",
+        "hospital": "hospital",
+        "atm": "atm",
+        "hotel": "hotel",
+        "pharmacy": "pharmacy",
+        "tourism": "tourism",
+    }.get(kind, "restaurant")
+    if amenity == "tourism":
+        query = f'[out:json][timeout:12];node["tourism"](around:900,{lat},{lng});out 12;'
+    else:
+        query = f'[out:json][timeout:12];node["amenity"="{amenity}"](around:900,{lat},{lng});out 12;'
+    try:
+        res = httpx.post("https://overpass-api.de/api/interpreter", content=query, timeout=14.0)
+        res.raise_for_status()
+        elements = res.json().get("elements") or []
+    except Exception:
+        return []
+    out = []
+    for el in elements[:12]:
+        tags = el.get("tags") or {}
+        name = tags.get("name")
+        if not name:
+            continue
+        out.append(
+            {
+                "name": name,
+                "kind": amenity,
+                "lat": el.get("lat"),
+                "lng": el.get("lon"),
+                "extra": tags.get("cuisine") or tags.get("opening_hours") or "",
+            }
+        )
+    return out

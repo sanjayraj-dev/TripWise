@@ -88,7 +88,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center" onClick={onClose}>
       <div
-        className={`max-h-[90vh] overflow-y-auto rounded-3xl bg-paper p-6 shadow-2xl ${wide ? "w-full max-w-xl" : "w-full max-w-md"}`}
+        className={`max-h-[90vh] overflow-y-auto rounded-3xl bg-paper p-6 shadow-2xl ${wide ? "w-full max-w-2xl" : "w-full max-w-md"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

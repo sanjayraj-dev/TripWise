@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access import ensure_owner_member, load_destination, load_owned_trip, serialize_trip_detail
+from app.core.ai import draft_itinerary
 from app.core.deps import get_traveler
 from app.core.geo import forecast
 from app.db.session import get_db
@@ -22,17 +23,6 @@ from app.models.user import User
 from app.schemas.common import DocumentCreate, DocumentUpdate
 
 router = APIRouter(tags=["extras"])
-
-DAY_TEMPLATES = [
-    ("Sunrise walk in the old quarter", "Sightseeing", "07:30", "09:30", "Historic center"),
-    ("Neighborhood breakfast", "Food", "09:45", "10:45", "Local cafe"),
-    ("Anchor museum or gallery", "Culture", "11:00", "13:00", ""),
-    ("Long lunch", "Food", "13:15", "15:00", ""),
-    ("Slow afternoon — park or river", "Nature", "15:30", "17:30", ""),
-    ("Blue hour lookout", "Sightseeing", "18:00", "19:00", ""),
-    ("Dinner reservation", "Food", "19:30", "21:30", ""),
-]
-
 
 @router.post("/api/trips/{trip_id}/share")
 def share_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
@@ -222,26 +212,34 @@ def dest_weather(destination_id: int, db: Session = Depends(get_db), user: User 
 
 @router.post("/api/trips/{trip_id}/suggest-day")
 def suggest_day(trip_id: int, body: dict, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
+    """Preview-only helper. Prefer POST /api/destinations/{id}/itinerary-draft."""
     trip = load_owned_trip(db, trip_id, user)
     dest_id = body.get("destination_id") or (trip.destinations[0].id if trip.destinations else None)
-    day = body.get("date")
-    if not dest_id or not day:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick a destination and a date.")
+    if not dest_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pick a destination.")
     dest = load_destination(db, int(dest_id), user)
-    city = dest.city
-    ideas = []
-    for title, cat, start, end, loc in DAY_TEMPLATES:
-        ideas.append({
-            "title": title.replace("the old quarter", city),
-            "category": cat,
-            "start_time": start,
-            "end_time": end,
-            "location": loc or city,
-            "description": f"Drafted for {city}. Edit freely — this is a starting plot, not a booking.",
-            "activity_date": day,
-            "destination_id": dest.id,
-        })
-    return {"city": city, "date": day, "ideas": ideas}
+    style = str(body.get("style") or "balanced")
+    result = draft_itinerary(
+        city=dest.city,
+        country=dest.country,
+        arrival=dest.arrival_date,
+        departure=dest.departure_date,
+        style=style,
+        trip_type=getattr(trip, "trip_type", None) or "leisure",
+    )
+    day = body.get("date")
+    ideas = result["activities"]
+    if day:
+        ideas = [a for a in ideas if a["activity_date"] == day]
+    for idea in ideas:
+        idea["destination_id"] = dest.id
+    return {
+        "city": dest.city,
+        "date": day,
+        "source": result["source"],
+        "message": result["message"],
+        "ideas": ideas,
+    }
 
 
 @router.post("/api/trips/{trip_id}/documents", status_code=201)

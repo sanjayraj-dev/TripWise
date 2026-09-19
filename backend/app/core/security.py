@@ -35,10 +35,21 @@ def validate_password_policy(password: str) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, PASSWORD_HINT)
 
 
-def create_access_token(user_id: int, role: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {"sub": str(user_id), "role": role, "exp": expire}
+def create_access_token(user_id: int, role: str, token_version: int = 0) -> str:
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "tv": int(token_version or 0),
+        "iat": now,
+        "exp": expire,
+    }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
+def bump_token_version(user) -> None:
+    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
 
 
 def decode_token(token: str) -> dict:

@@ -8,9 +8,13 @@ class Settings(BaseSettings):
     secret_key: str = "tripwise-dev-secret-change-me-please-32b"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
+    inactivity_timeout_minutes: int = 30
     database_url: str = "postgresql+psycopg://tripwise:tripwise@localhost:5432/tripwise"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     skip_seed: bool = False
+    xai_api_key: str = ""
+    xai_model: str = "grok-4.5"
+    xai_base_url: str = "https://api.x.ai/v1"
 
     @property
     def origins(self) -> list[str]:

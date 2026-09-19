@@ -88,3 +88,14 @@ def admin_user(client, db):
 
 def auth_header(token_payload: dict) -> dict:
     return {"Authorization": f"Bearer {token_payload['access_token']}"}
+
+
+@pytest.fixture(autouse=True)
+def _offline_adapters(monkeypatch):
+    monkeypatch.setattr("app.core.geo.geocode", lambda *_a, **_k: (35.0, 135.0))
+    monkeypatch.setattr("app.core.geo.forecast", lambda *_a, **_k: [])
+    monkeypatch.setattr("app.core.geo.nearby_places", lambda *_a, **_k: [])
+    monkeypatch.setattr("app.routers.destinations.geocode", lambda *_a, **_k: (35.0, 135.0))
+    monkeypatch.setattr("app.routers.itinerary.geocode", lambda *_a, **_k: (35.0, 135.0))
+    monkeypatch.setattr("app.routers.itinerary.forecast", lambda *_a, **_k: [])
+    monkeypatch.setattr("app.routers.itinerary.nearby_places", lambda *_a, **_k: [])

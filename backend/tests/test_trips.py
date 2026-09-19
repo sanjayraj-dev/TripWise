@@ -61,6 +61,25 @@ def test_destination_and_budget(client, traveler):
     assert detail["remaining"] == 38000
 
 
+def test_admin_stats_and_traveler_detail(client, traveler, admin_user):
+    headers = auth_header(traveler)
+    client.post(
+        "/api/trips",
+        json={"title": "Admin View", "start_date": "2026-09-01", "end_date": "2026-09-03", "estimated_budget": 10},
+        headers=headers,
+    )
+    stats = client.get("/api/admin/stats", headers=auth_header(admin_user))
+    assert stats.status_code == 200
+    body = stats.json()
+    assert "upcoming_trips" in body
+    assert body["trips"] >= 1
+    users = client.get("/api/admin/users", headers=auth_header(admin_user)).json()
+    tid = next(u["id"] for u in users if u["email"] == "test@tripwise.dev")
+    detail = client.get(f"/api/admin/users/{tid}", headers=auth_header(admin_user))
+    assert detail.status_code == 200
+    assert detail.json()["trips"]
+
+
 def test_admin_deactivate_blocks_login(client, traveler, admin_user):
     users = client.get("/api/admin/users", headers=auth_header(admin_user))
     assert users.status_code == 200

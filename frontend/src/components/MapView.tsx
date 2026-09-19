@@ -4,7 +4,17 @@ import "leaflet/dist/leaflet.css";
 
 type Point = { id: number; city: string; lat: number; lng: number };
 
-export function MapView({ points, height = 320 }: { points: Point[]; height?: number }) {
+export function MapView({
+  points,
+  height = 320,
+  selectedId,
+  onSelect,
+}: {
+  points: Point[];
+  height?: number;
+  selectedId?: number | null;
+  onSelect?: (id: number) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -15,9 +25,15 @@ export function MapView({ points, height = 320 }: { points: Point[]; height?: nu
     }).addTo(map);
     const latlngs = points.map((p) => [p.lat, p.lng] as [number, number]);
     latlngs.forEach((ll, i) => {
-      L.circleMarker(ll, { radius: 8, color: "#E07A5F", fillColor: "#1B2A4A", fillOpacity: 0.9, weight: 2 })
-        .bindPopup(`${i + 1}. ${points[i].city}`)
-        .addTo(map);
+      const selected = points[i].id === selectedId;
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="tw-pin${selected ? " is-on" : ""}">${i + 1}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+      const marker = L.marker(ll, { icon }).bindPopup(`${i + 1}. ${points[i].city}`).addTo(map);
+      marker.on("click", () => onSelect?.(points[i].id));
     });
     if (latlngs.length > 1) {
       L.polyline(latlngs, { color: "#E07A5F", weight: 3, dashArray: "6 8" }).addTo(map);
@@ -28,10 +44,14 @@ export function MapView({ points, height = 320 }: { points: Point[]; height?: nu
       clearTimeout(t);
       map.remove();
     };
-  }, [points]);
+  }, [points, selectedId, onSelect]);
 
   if (!points.length) {
-    return <div className="rounded-[1.6rem] border border-dashed border-line p-10 text-center text-sm text-muted">Add destinations to plot the route.</div>;
+    return (
+      <div className="rounded-[1.6rem] border border-dashed border-line p-10 text-center text-sm text-muted">
+        Add destinations so TripWise can geocode them onto the map.
+      </div>
+    );
   }
   return <div ref={ref} className="overflow-hidden rounded-[1.6rem] border border-line" style={{ height }} />;
 }

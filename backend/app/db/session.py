@@ -31,6 +31,19 @@ engine = _make_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+def ensure_schema() -> None:
+    """Add columns create_all will not patch on an existing SQLite/Postgres file."""
+    dialect = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect == "sqlite":
+            rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+            cols = {row[1] for row in rows}
+            if "token_version" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0"))
+        else:
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 0"))
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

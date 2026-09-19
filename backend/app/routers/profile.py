@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.core.security import hash_password, validate_password_policy, verify_password
+from app.core.security import bump_token_version, create_access_token, hash_password, validate_password_policy, verify_password
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import PasswordChange, ProfileUpdate, UserPublic
@@ -32,5 +32,10 @@ def change_password(body: PasswordChange, db: Session = Depends(get_db), user: U
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect.")
     validate_password_policy(body.new_password)
     user.password_hash = hash_password(body.new_password)
+    bump_token_version(user)
     db.commit()
-    return {"message": "Password updated."}
+    db.refresh(user)
+    return {
+        "message": "Password updated.",
+        "access_token": create_access_token(user.id, user.role, user.token_version),
+    }

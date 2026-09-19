@@ -1,14 +1,42 @@
+from datetime import time as time_cls
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.access import assert_activity_timing, get_activity, load_destination, serialize_activity
+from app.core.ai import STYLES, draft_itinerary
 from app.core.deps import get_traveler
+from app.core.geo import forecast, geocode, nearby_places
 from app.db.session import get_db
 from app.models.activity import Activity
 from app.models.user import User
-from app.schemas.common import ActivityCreate, ActivityUpdate
+from app.schemas.common import ActivityCreate, ActivityUpdate, DraftAcceptIn, DraftGenerateIn
 
 router = APIRouter(tags=["itinerary"])
+
+
+def _budget_band(amount) -> str:
+    try:
+        n = float(amount or 0)
+    except (TypeError, ValueError):
+        return "unspecified"
+    if n <= 0:
+        return "unspecified"
+    if n < 25000:
+        return "lean"
+    if n < 100000:
+        return "moderate"
+    return "comfortable"
+
+
+def _parse_hhmm(value: str | None):
+    if not value:
+        return None
+    parts = str(value).split(":")
+    try:
+        return time_cls(int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return None
 
 
 @router.post("/api/destinations/{destination_id}/activities", status_code=201)
@@ -77,3 +105,85 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db), user: User 
     db.delete(act)
     db.commit()
     return {"message": "Activity deleted."}
+
+
+@router.post("/api/destinations/{destination_id}/itinerary-draft")
+def generate_itinerary_draft(
+    destination_id: int,
+    body: DraftGenerateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_traveler),
+):
+    dest = load_destination(db, destination_id, user)
+    style = (body.style or "balanced").lower()
+    if style not in STYLES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Style must be one of: {', '.join(STYLES)}.")
+    if dest.lat is None or dest.lng is None:
+        lat, lng = geocode(dest.city, dest.country)
+        if lat is not None:
+            dest.lat, dest.lng = lat, lng
+            db.commit()
+            db.refresh(dest)
+    weather = forecast(dest.lat, dest.lng) if dest.lat is not None and dest.lng is not None else []
+    nearby: list[str] = []
+    if dest.lat is not None and dest.lng is not None:
+        for kind in ("tourism", "restaurant", "cafe"):
+            nearby.extend(p["name"] for p in nearby_places(dest.lat, dest.lng, kind)[:4])
+    existing = [f"{a.title} ({a.activity_date.isoformat()})" for a in dest.activities]
+    trip = dest.trip
+    result = draft_itinerary(
+        city=dest.city,
+        country=dest.country,
+        arrival=dest.arrival_date,
+        departure=dest.departure_date,
+        style=style,
+        trip_type=getattr(trip, "trip_type", None) or "leisure",
+        budget_band=_budget_band(getattr(trip, "estimated_budget", 0)),
+        existing=existing,
+        weather=weather,
+        nearby=nearby,
+    )
+    result["destination_id"] = dest.id
+    result["city"] = dest.city
+    result["existing_count"] = len(dest.activities)
+    return result
+
+
+@router.post("/api/destinations/{destination_id}/itinerary-draft/accept", status_code=201)
+def accept_itinerary_draft(
+    destination_id: int,
+    body: DraftAcceptIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_traveler),
+):
+    dest = load_destination(db, destination_id, user)
+    if not body.items:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Select at least one draft activity to accept.")
+    if body.replace:
+        for act in list(dest.activities):
+            db.delete(act)
+        db.flush()
+    created = []
+    for item in body.items:
+        start = item.start_time
+        end = item.end_time
+        if isinstance(start, str):
+            start = _parse_hhmm(start)
+        if isinstance(end, str):
+            end = _parse_hhmm(end)
+        assert_activity_timing(dest, item.activity_date, start, end)
+        act = Activity(
+            destination_id=dest.id,
+            title=item.title.strip(),
+            description=item.description or "",
+            activity_date=item.activity_date,
+            start_time=start,
+            end_time=end,
+            location=item.location or "",
+            category=item.category or "Sightseeing",
+        )
+        db.add(act)
+        db.flush()
+        created.append(serialize_activity(act, dest))
+    db.commit()
+    return {"created": created, "replaced": body.replace}

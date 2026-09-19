@@ -21,6 +21,9 @@ def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found.")
     if user.status != "active":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated.")
+    token_tv = int(payload.get("tv") or 0)
+    if token_tv != int(getattr(user, "token_version", 0) or 0):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired. Please sign in again.")
     return user
 
 

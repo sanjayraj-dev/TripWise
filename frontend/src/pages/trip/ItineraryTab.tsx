@@ -1,8 +1,35 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { Button, ConfirmDialog, Empty, Field, Modal, inputClass } from "../../components/ui";
 import { ACTIVITY_CATEGORIES, ACTIVITY_TONES, eachDay, prettyDate } from "../../lib";
 import type { Activity, TripDetail } from "../../types";
+
+const STYLES = [
+  { id: "balanced", label: "Balanced" },
+  { id: "food", label: "Food" },
+  { id: "culture", label: "Culture" },
+  { id: "chill", label: "Chill" },
+] as const;
+
+type DraftItem = {
+  title: string;
+  description: string;
+  activity_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  location: string;
+  category: string;
+};
+
+type DraftResponse = {
+  source: "ai" | "template";
+  style: string;
+  message: string;
+  city: string;
+  destination_id: number;
+  existing_count: number;
+  activities: DraftItem[];
+};
 
 export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: () => void }) {
   const days = eachDay(trip.start_date, trip.end_date);
@@ -10,28 +37,69 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
   const [edit, setEdit] = useState<Activity | null>(null);
   const [del, setDel] = useState<Activity | null>(null);
   const [error, setError] = useState("");
+  const [destId, setDestId] = useState(trip.destinations[0]?.id ?? 0);
+  const [style, setStyle] = useState<(typeof STYLES)[number]["id"]>("balanced");
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<DraftResponse | null>(null);
+  const [picked, setPicked] = useState<Record<number, boolean>>({});
+  const [replaceAsk, setReplaceAsk] = useState(false);
 
-  async function suggest(day: string) {
-    const dest = trip.destinations.find((d) => day >= d.arrival_date && day <= d.departure_date) ?? trip.destinations[0];
+  const selectedDest = trip.destinations.find((d) => d.id === destId) ?? trip.destinations[0];
+
+  async function generate() {
+    if (!selectedDest) return;
+    setError("");
+    setBusy(true);
     try {
-      const res = await api<{ ideas: { title: string; category: string; start_time: string; end_time: string; location: string; description: string; activity_date: string; destination_id: number }[] }>(
-        `/api/trips/${trip.id}/suggest-day`,
-        { method: "POST", json: { destination_id: dest.id, date: day } },
-      );
-      for (const idea of res.ideas) {
-        await api(`/api/trips/${trip.id}/activities`, { method: "POST", json: idea });
-      }
+      const res = await api<DraftResponse>(`/api/destinations/${selectedDest.id}/itinerary-draft`, {
+        method: "POST",
+        json: { style },
+      });
+      setDraft(res);
+      const next: Record<number, boolean> = {};
+      res.activities.forEach((_, i) => {
+        next[i] = true;
+      });
+      setPicked(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not generate a draft.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const chosen = useMemo(() => (draft ? draft.activities.filter((_, i) => picked[i]) : []), [draft, picked]);
+
+  async function accept(replace: boolean) {
+    if (!draft || !chosen.length) return;
+    setError("");
+    setBusy(true);
+    try {
+      await api(`/api/destinations/${draft.destination_id}/itinerary-draft/accept`, {
+        method: "POST",
+        json: { items: chosen, replace },
+      });
+      setDraft(null);
+      setReplaceAsk(false);
       onChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not draft the day.");
+      setError(err instanceof Error ? err.message : "Could not save the accepted activities.");
+    } finally {
+      setBusy(false);
     }
+  }
+
+  function requestAccept() {
+    if (!draft || !chosen.length) return;
+    if (draft.existing_count > 0) setReplaceAsk(true);
+    else void accept(false);
   }
 
   if (!trip.destinations.length) {
     return <Empty title="Add a destination first" body="Activities belong to a stop on the route." />;
   }
 
-  async function save(e: React.FormEvent<HTMLFormElement>, act?: Activity, day?: string) {
+  async function save(e: React.FormEvent<HTMLFormElement>, act?: Activity) {
     e.preventDefault();
     setError("");
     const fd = new FormData(e.currentTarget);
@@ -58,6 +126,39 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
 
   return (
     <div className="space-y-4">
+      <div className="rounded-3xl border border-line bg-white/50 p-4">
+        <p className="text-xs uppercase tracking-wider text-muted">AI itinerary for a TripStop</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="min-w-40 flex-1 text-sm">
+            <span className="mb-1 block text-xs text-muted">Destination</span>
+            <select className={inputClass} value={selectedDest?.id} onChange={(e) => setDestId(Number(e.target.value))}>
+              {trip.destinations.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.city}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-36 text-sm">
+            <span className="mb-1 block text-xs text-muted">Style</span>
+            <select className={inputClass} value={style} onChange={(e) => setStyle(e.target.value as typeof style)}>
+              {STYLES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button onClick={() => void generate()} disabled={busy}>
+            {busy ? "Generating…" : "Generate itinerary"}
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-ink-soft">
+          Drafts stay in a preview until you accept them. Existing activities are not overwritten unless you confirm.
+        </p>
+        {error && !draft && <p className="mt-2 text-sm text-danger">{error}</p>}
+      </div>
+
       {days.map((day, i) => {
         const items = trip.activities.filter((a) => a.activity_date === day);
         return (
@@ -67,10 +168,15 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
                 <p className="text-xs uppercase tracking-wider text-muted">Day {i + 1}</p>
                 <h3 className="serif text-2xl">{prettyDate(day)}</h3>
               </div>
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => void suggest(day)}>Suggest a day</Button>
-                <Button variant="ghost" onClick={() => { setError(""); setOpen(day); }}>Add activity</Button>
-              </div>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setError("");
+                  setOpen(day);
+                }}
+              >
+                Add activity
+              </Button>
             </div>
             <div className="mt-4 space-y-3">
               {items.length === 0 && <p className="text-sm text-muted">Nothing planned.</p>}
@@ -81,15 +187,27 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
                       {a.start_time ? `${a.start_time}${a.end_time ? `–${a.end_time}` : ""}` : "Flexible"} · {a.city}
                     </p>
                     <p className="font-medium">
-                      <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${ACTIVITY_TONES[a.category] ?? "bg-paper-3"}`}>{a.category}</span>
+                      <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${ACTIVITY_TONES[a.category] ?? "bg-paper-3"}`}>
+                        {a.category}
+                      </span>
                       {a.title}
                     </p>
                     {a.location && <p className="text-sm text-ink-soft">{a.location}</p>}
                     {a.description && <p className="mt-1 text-sm text-ink-soft">{a.description}</p>}
                   </div>
                   <div className="flex shrink-0 gap-2 text-sm">
-                    <button className="underline" onClick={() => { setError(""); setEdit(a); }}>Edit</button>
-                    <button className="text-danger underline" onClick={() => setDel(a)}>Remove</button>
+                    <button
+                      className="underline"
+                      onClick={() => {
+                        setError("");
+                        setEdit(a);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button className="text-danger underline" onClick={() => setDel(a)}>
+                      Remove
+                    </button>
                   </div>
                 </div>
               ))}
@@ -105,8 +223,11 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
         day={open}
         act={edit}
         error={error}
-        onClose={() => { setOpen(null); setEdit(null); }}
-        onSubmit={(e) => save(e, edit ?? undefined, open ?? undefined)}
+        onClose={() => {
+          setOpen(null);
+          setEdit(null);
+        }}
+        onSubmit={(e) => save(e, edit ?? undefined)}
       />
       <ConfirmDialog
         open={!!del}
@@ -120,25 +241,111 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
           onChange();
         }}
       />
+
+      <Modal
+        open={!!draft}
+        title={draft ? `Draft for ${draft.city}` : "Draft"}
+        onClose={() => setDraft(null)}
+        wide
+      >
+        {draft && (
+          <div className="space-y-4">
+            <p className={`rounded-2xl px-3 py-2 text-sm ${draft.source === "template" ? "bg-gold/20 text-ink" : "bg-sage/15 text-sage-dark"}`}>
+              {draft.message}
+            </p>
+            <div className="flex gap-2 text-xs">
+              <button className="underline" onClick={() => setPicked(Object.fromEntries(draft.activities.map((_, i) => [i, true])))}>
+                Select all
+              </button>
+              <button className="underline" onClick={() => setPicked({})}>
+                Select none
+              </button>
+            </div>
+            <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+              {draft.activities.map((item, i) => (
+                <label key={`${item.activity_date}-${i}`} className="flex gap-3 rounded-2xl bg-paper px-3 py-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={!!picked[i]}
+                    onChange={(e) => setPicked((prev) => ({ ...prev, [i]: e.target.checked }))}
+                  />
+                  <span>
+                    <span className="text-xs text-muted">
+                      {prettyDate(item.activity_date)}
+                      {item.start_time ? ` · ${item.start_time}${item.end_time ? `–${item.end_time}` : ""}` : ""} · {item.category}
+                    </span>
+                    <span className="block font-medium">{item.title}</span>
+                    <span className="block text-ink-soft">{item.location}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" type="button" onClick={() => setDraft(null)}>
+                Discard
+              </Button>
+              <Button type="button" onClick={requestAccept} disabled={busy || !chosen.length}>
+                Accept selected ({chosen.length})
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={replaceAsk} title="This stop already has activities" onClose={() => setReplaceAsk(false)}>
+        <p className="mb-6 text-sm text-ink-soft">
+          Accepting the draft can add it alongside what you already planned, or replace the existing itinerary for this stop.
+        </p>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" type="button" onClick={() => setReplaceAsk(false)}>
+            Cancel
+          </Button>
+          <Button variant="ghost" type="button" onClick={() => void accept(false)} disabled={busy}>
+            Add alongside
+          </Button>
+          <Button variant="danger" type="button" onClick={() => void accept(true)} disabled={busy}>
+            Replace existing
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 function ActivityModal({
-  open, title, trip, day, act, error, onClose, onSubmit,
+  open,
+  title,
+  trip,
+  day,
+  act,
+  error,
+  onClose,
+  onSubmit,
 }: {
-  open: boolean; title: string; trip: TripDetail; day: string | null; act: Activity | null; error: string;
-  onClose: () => void; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  open: boolean;
+  title: string;
+  trip: TripDetail;
+  day: string | null;
+  act: Activity | null;
+  error: string;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const defaultDest = act?.destination_id ?? trip.destinations[0]?.id;
   return (
     <Modal open={open} title={title} onClose={onClose} wide>
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="Title"><input name="title" className={inputClass} defaultValue={act?.title} required /></Field>
+        <Field label="Title">
+          <input name="title" className={inputClass} defaultValue={act?.title} required />
+        </Field>
         <Field label="Destination">
           <select name="destination_id" className={inputClass} defaultValue={defaultDest} required>
             {trip.destinations.map((d) => (
-              <option key={d.id} value={d.id}>{d.city}</option>
+              <option key={d.id} value={d.id}>
+                {d.city}
+              </option>
             ))}
           </select>
         </Field>
@@ -155,15 +362,21 @@ function ActivityModal({
         </div>
         <Field label="Category">
           <select name="category" className={inputClass} defaultValue={act?.category ?? "Sightseeing"}>
-            {ACTIVITY_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            {ACTIVITY_CATEGORIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
           </select>
         </Field>
-        <Field label="Location"><input name="location" className={inputClass} defaultValue={act?.location} /></Field>
+        <Field label="Location">
+          <input name="location" className={inputClass} defaultValue={act?.location} />
+        </Field>
         <Field label="Notes">
           <textarea name="description" rows={3} className={inputClass} defaultValue={act?.description} />
         </Field>
         {error && <p className="text-sm text-danger">{error}</p>}
-        <Button type="submit" className="w-full">Save activity</Button>
+        <Button type="submit" className="w-full">
+          Save activity
+        </Button>
       </form>
     </Modal>
   );

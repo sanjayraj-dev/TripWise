@@ -31,6 +31,21 @@ def test_bad_login(client, traveler):
     assert "Invalid" in res.json()["detail"]
 
 
+def test_logout_invalidates_token(client, traveler):
+    headers = auth_header(traveler)
+    assert client.get("/api/auth/me", headers=headers).status_code == 200
+    out = client.post("/api/auth/logout", headers=headers)
+    assert out.status_code == 200
+    me = client.get("/api/auth/me", headers=headers)
+    assert me.status_code == 401
+
+
+def test_session_policy(client):
+    res = client.get("/api/auth/session")
+    assert res.status_code == 200
+    assert res.json()["inactivity_timeout_minutes"] >= 1
+
+
 def test_change_password(client, traveler):
     headers = auth_header(traveler)
     res = client.post(

@@ -1,13 +1,15 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.db.base import Base
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal, engine, ensure_schema
 from app.routers import accommodations, admin, auth, destinations, expenses, extras, itinerary, notes, profile, social, trips
 from app.seed import seed_if_empty
 
@@ -17,6 +19,7 @@ import app.models  # noqa: F401  — register metadata
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
     if not settings.skip_seed:
         db = SessionLocal()
         try:
@@ -26,7 +29,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +43,13 @@ app.add_middleware(
 @app.exception_handler(IntegrityError)
 async def integrity_handler(_request: Request, _exc: IntegrityError):
     return JSONResponse(status_code=409, content={"detail": "That record already exists."})
+
+
+@app.exception_handler(Exception)
+async def unhandled_handler(_request: Request, exc: Exception):
+    if isinstance(exc, (StarletteHTTPException, RequestValidationError)):
+        raise exc
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
 
 
 app.include_router(auth.router)
@@ -57,4 +67,9 @@ app.include_router(social.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "name": "TripWise"}
+    return {
+        "status": "ok",
+        "name": "TripWise",
+        "version": "1.3.0",
+        "inactivity_timeout_minutes": settings.inactivity_timeout_minutes,
+    }

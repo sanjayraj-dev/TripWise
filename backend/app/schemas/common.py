@@ -181,3 +181,22 @@ class PackingUpdate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+
+class DraftGenerateIn(BaseModel):
+    style: str = "balanced"
+
+
+class DraftActivityIn(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    description: str = ""
+    activity_date: date
+    start_time: time | None = None
+    end_time: time | None = None
+    location: str = ""
+    category: str = "Sightseeing"
+
+
+class DraftAcceptIn(BaseModel):
+    items: list[DraftActivityIn]
+    replace: bool = False

@@ -65,6 +65,26 @@ textarea {
   background: #d9e2d0;
 }
 
+.tw-pin {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #1b2a4a;
+  color: #f6f1e8;
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid #e07a5f;
+  box-shadow: 0 4px 10px rgba(18, 28, 51, 0.28);
+}
+
+.tw-pin.is-on {
+  background: #e07a5f;
+  color: #fff;
+  transform: scale(1.12);
+}
+
 @media print {
   aside, header, nav, .no-print { display: none !important; }
   main { padding: 0 !important; max-width: none !important; }

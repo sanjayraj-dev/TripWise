@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { api } from "../api/client";
+import { api, setToken } from "../api/client";
 import { Button, Field, inputClass, passwordScore } from "../components/ui";
 
 export function ProfilePage() {
@@ -30,7 +30,11 @@ export function ProfilePage() {
     e.preventDefault();
     setErr("");
     try {
-      await api("/api/profile/password", { method: "POST", json: { current_password: current, new_password: next } });
+      const res = await api<{ access_token?: string }>("/api/profile/password", {
+        method: "POST",
+        json: { current_password: current, new_password: next },
+      });
+      if (res.access_token) setToken(res.access_token);
       setCurrent("");
       setNext("");
       setMsg("Password changed.");
