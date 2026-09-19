@@ -7,30 +7,44 @@ export function money(n: number, currency = "INR") {
   return `${s}${Math.round(n).toLocaleString("en-IN")}`;
 }
 
-export function prettyDate(iso: string) {
-  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+function parseDay(iso: string | null | undefined): Date | null {
+  if (!iso || typeof iso !== "string") return null;
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+export function prettyDate(iso: string | null | undefined) {
+  const dt = parseDay(iso);
+  if (!dt) return iso || "";
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function shortDate(iso: string) {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const dt = parseDay(iso);
+  if (!dt) return iso || "";
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 export function weekday(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" });
+  const dt = parseDay(iso);
+  if (!dt) return "";
+  return dt.toLocaleDateString("en-IN", { weekday: "short" });
 }
 
 export function daysUntil(iso: string) {
-  const start = new Date(iso + "T00:00:00");
+  const start = parseDay(iso);
+  if (!start) return 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return Math.round((start.getTime() - today.getTime()) / 86400000);
 }
 
 export function tripLength(start: string, end: string) {
-  const a = new Date(start + "T00:00:00");
-  const b = new Date(end + "T00:00:00");
+  const a = parseDay(start);
+  const b = parseDay(end);
+  if (!a || !b) return 1;
   return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
 }
 
@@ -85,20 +99,24 @@ export function greeting() {
 
 export function eachDay(start: string, end: string) {
   const out: string[] = [];
-  const a = new Date(start + "T00:00:00");
-  const b = new Date(end + "T00:00:00");
-  for (let d = new Date(a); d <= b; d.setDate(d.getDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
+  const a = parseDay(start);
+  const b = parseDay(end);
+  if (!a || !b || a > b) return out;
+  for (let d = new Date(a); d <= b && out.length < 60; d.setDate(d.getDate() + 1)) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    out.push(`${y}-${m}-${day}`);
   }
   return out;
 }
 
 export const ACTIVITY_TONES: Record<string, string> = {
-  Sightseeing: "bg-ink text-paper",
-  Culture: "bg-terracotta text-white",
-  Food: "bg-gold text-ink",
-  Nature: "bg-sage text-white",
-  Transit: "bg-ink-soft text-paper",
+  Sightseeing: "bg-ink/10 text-ink",
+  Culture: "bg-terracotta/15 text-terracotta-dark",
+  Food: "bg-gold/30 text-ink",
+  Nature: "bg-sage/15 text-sage-dark",
+  Transit: "bg-ink-soft/10 text-ink-soft",
   Rest: "bg-paper-3 text-ink",
 };
 

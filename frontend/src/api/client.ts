@@ -36,7 +36,14 @@ export async function api<T>(path: string, options: RequestInit & { json?: unkno
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(res.ok ? "The server returned an unreadable response." : `Request failed (${res.status}).`);
+    }
+  }
   if (!res.ok) throw new Error(readDetail(data));
   return data as T;
 }

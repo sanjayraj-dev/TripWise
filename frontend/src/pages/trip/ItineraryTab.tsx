@@ -12,27 +12,39 @@ const STYLES = [
 ] as const;
 
 type DraftItem = {
-  title: string;
-  description: string;
-  activity_date: string;
-  start_time: string | null;
-  end_time: string | null;
-  location: string;
-  category: string;
+  title?: string;
+  description?: string;
+  activity_date?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string;
+  category?: string;
 };
 
 type DraftResponse = {
-  source: "ai" | "template";
-  style: string;
-  message: string;
-  city: string;
-  destination_id: number;
-  existing_count: number;
-  activities: DraftItem[];
+  source?: "ai" | "template";
+  style?: string;
+  message?: string;
+  city?: string;
+  destination_id?: number;
+  existing_count?: number;
+  activities?: DraftItem[];
 };
+
+function asText(value: unknown, fallback = "") {
+  if (value == null) return fallback;
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  return fallback;
+}
+
+function clock(value: unknown) {
+  const s = asText(value);
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
 
 export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: () => void }) {
   const days = eachDay(trip.start_date, trip.end_date);
+  const activities = trip.activities ?? [];
   const [open, setOpen] = useState<string | null>(null);
   const [edit, setEdit] = useState<Activity | null>(null);
   const [del, setDel] = useState<Activity | null>(null);
@@ -45,6 +57,7 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
   const [replaceAsk, setReplaceAsk] = useState(false);
 
   const selectedDest = trip.destinations.find((d) => d.id === destId) ?? trip.destinations[0];
+  const draftItems = Array.isArray(draft?.activities) ? draft.activities : [];
 
   async function generate() {
     if (!selectedDest) return;
@@ -55,12 +68,13 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
         method: "POST",
         json: { style },
       });
-      setDraft(res);
-      const next: Record<number, boolean> = {};
-      res.activities.forEach((_, i) => {
-        next[i] = true;
-      });
-      setPicked(next);
+      const items = Array.isArray(res?.activities) ? res.activities : [];
+      if (!items.length) {
+        setError("The generator returned an empty draft. Try another style, or add a day by hand.");
+        return;
+      }
+      setDraft({ ...res, activities: items });
+      setPicked(Object.fromEntries(items.map((_, i) => [i, true])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate a draft.");
     } finally {
@@ -68,16 +82,43 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
     }
   }
 
-  const chosen = useMemo(() => (draft ? draft.activities.filter((_, i) => picked[i]) : []), [draft, picked]);
+  const chosen = useMemo(() => draftItems.filter((_, i) => picked[i]), [draftItems, picked]);
+
+  const groupedDraft = useMemo(() => {
+    const groups: { day: string; rows: { item: DraftItem; index: number }[] }[] = [];
+    const index = new Map<string, { day: string; rows: { item: DraftItem; index: number }[] }>();
+    draftItems.forEach((item, i) => {
+      const day = asText(item.activity_date, "unscheduled");
+      let g = index.get(day);
+      if (!g) {
+        g = { day, rows: [] };
+        index.set(day, g);
+        groups.push(g);
+      }
+      g.rows.push({ item, index: i });
+    });
+    return groups;
+  }, [draftItems]);
 
   async function accept(replace: boolean) {
-    if (!draft || !chosen.length) return;
+    if (!draft || !chosen.length || !draft.destination_id) return;
     setError("");
     setBusy(true);
     try {
       await api(`/api/destinations/${draft.destination_id}/itinerary-draft/accept`, {
         method: "POST",
-        json: { items: chosen, replace },
+        json: {
+          items: chosen.map((item) => ({
+            title: asText(item.title).slice(0, 160),
+            description: asText(item.description),
+            activity_date: asText(item.activity_date),
+            start_time: clock(item.start_time) || null,
+            end_time: clock(item.end_time) || null,
+            location: asText(item.location),
+            category: asText(item.category, "Sightseeing"),
+          })),
+          replace,
+        },
       });
       setDraft(null);
       setReplaceAsk(false);
@@ -91,7 +132,7 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
 
   function requestAccept() {
     if (!draft || !chosen.length) return;
-    if (draft.existing_count > 0) setReplaceAsk(true);
+    if ((draft.existing_count ?? 0) > 0) setReplaceAsk(true);
     else void accept(false);
   }
 
@@ -156,11 +197,80 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
         <p className="mt-2 text-xs text-ink-soft">
           Drafts stay in a preview until you accept them. Existing activities are not overwritten unless you confirm.
         </p>
-        {error && !draft && <p className="mt-2 text-sm text-danger">{error}</p>}
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       </div>
 
+      {draft && (
+        <section className="rounded-3xl border border-ink/15 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted">Preview · {asText(draft.city, selectedDest?.city)}</p>
+              <h3 className="serif text-2xl">Review before saving</h3>
+            </div>
+            <button className="text-sm underline" onClick={() => setDraft(null)} type="button">
+              Discard
+            </button>
+          </div>
+          <p className="mt-3 rounded-2xl bg-paper-2 px-3 py-2 text-sm text-ink">
+            {asText(
+              draft.message,
+              draft.source === "ai"
+                ? "AI draft — nothing is saved until you accept items."
+                : "City template — nothing is saved until you accept items.",
+            )}
+          </p>
+          <div className="mt-3 flex gap-3 text-xs">
+            <button className="underline" type="button" onClick={() => setPicked(Object.fromEntries(draftItems.map((_, i) => [i, true])))}>
+              Select all
+            </button>
+            <button className="underline" type="button" onClick={() => setPicked({})}>
+              Select none
+            </button>
+            <span className="text-muted">{chosen.length} selected</span>
+          </div>
+          <div className="mt-4 max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+            {groupedDraft.map((group) => (
+              <div key={group.day}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+                  {group.day === "unscheduled" ? "Unscheduled" : prettyDate(group.day)}
+                </p>
+                <div className="space-y-2">
+                  {group.rows.map(({ item, index }) => (
+                    <label key={index} className="flex gap-3 rounded-2xl bg-paper px-3 py-3 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={!!picked[index]}
+                        onChange={(e) => setPicked((prev) => ({ ...prev, [index]: e.target.checked }))}
+                      />
+                      <span className="min-w-0">
+                        <span className="text-xs text-muted">
+                          {clock(item.start_time) ? `${clock(item.start_time)}${clock(item.end_time) ? `–${clock(item.end_time)}` : ""}` : "Flexible"}
+                          {" · "}
+                          {asText(item.category, "Sightseeing")}
+                        </span>
+                        <span className="block font-medium">{asText(item.title, "Untitled")}</span>
+                        {asText(item.location) ? <span className="block text-ink-soft">{asText(item.location)}</span> : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" type="button" onClick={() => setDraft(null)}>
+              Discard
+            </Button>
+            <Button type="button" onClick={requestAccept} disabled={busy || !chosen.length}>
+              Accept selected ({chosen.length})
+            </Button>
+          </div>
+        </section>
+      )}
+
       {days.map((day, i) => {
-        const items = trip.activities.filter((a) => a.activity_date === day);
+        const items = activities.filter((a) => a.activity_date === day);
         return (
           <section key={day} className="rounded-3xl border border-line bg-white/50 p-5">
             <div className="flex items-center justify-between">
@@ -182,18 +292,18 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
               {items.length === 0 && <p className="text-sm text-muted">Nothing planned.</p>}
               {items.map((a) => (
                 <div key={a.id} className="flex items-start justify-between gap-3 rounded-2xl bg-paper px-4 py-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs text-muted">
-                      {a.start_time ? `${a.start_time}${a.end_time ? `–${a.end_time}` : ""}` : "Flexible"} · {a.city}
+                      {a.start_time ? `${clock(a.start_time)}${a.end_time ? `–${clock(a.end_time)}` : ""}` : "Flexible"} · {asText(a.city)}
                     </p>
                     <p className="font-medium">
-                      <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${ACTIVITY_TONES[a.category] ?? "bg-paper-3"}`}>
-                        {a.category}
+                      <span className={`mr-2 inline-block rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${ACTIVITY_TONES[a.category] ?? "bg-paper-3"}`}>
+                        {asText(a.category, "Sightseeing")}
                       </span>
-                      {a.title}
+                      {asText(a.title)}
                     </p>
-                    {a.location && <p className="text-sm text-ink-soft">{a.location}</p>}
-                    {a.description && <p className="mt-1 text-sm text-ink-soft">{a.description}</p>}
+                    {a.location && <p className="text-sm text-ink-soft">{asText(a.location)}</p>}
+                    {a.description && <p className="mt-1 text-sm text-ink-soft">{asText(a.description)}</p>}
                   </div>
                   <div className="flex shrink-0 gap-2 text-sm">
                     <button
@@ -241,62 +351,9 @@ export function ItineraryTab({ trip, onChange }: { trip: TripDetail; onChange: (
           onChange();
         }}
       />
-
-      <Modal
-        open={!!draft}
-        title={draft ? `Draft for ${draft.city}` : "Draft"}
-        onClose={() => setDraft(null)}
-        wide
-      >
-        {draft && (
-          <div className="space-y-4">
-            <p className={`rounded-2xl px-3 py-2 text-sm ${draft.source === "template" ? "bg-gold/20 text-ink" : "bg-sage/15 text-sage-dark"}`}>
-              {draft.message}
-            </p>
-            <div className="flex gap-2 text-xs">
-              <button className="underline" onClick={() => setPicked(Object.fromEntries(draft.activities.map((_, i) => [i, true])))}>
-                Select all
-              </button>
-              <button className="underline" onClick={() => setPicked({})}>
-                Select none
-              </button>
-            </div>
-            <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-              {draft.activities.map((item, i) => (
-                <label key={`${item.activity_date}-${i}`} className="flex gap-3 rounded-2xl bg-paper px-3 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={!!picked[i]}
-                    onChange={(e) => setPicked((prev) => ({ ...prev, [i]: e.target.checked }))}
-                  />
-                  <span>
-                    <span className="text-xs text-muted">
-                      {prettyDate(item.activity_date)}
-                      {item.start_time ? ` · ${item.start_time}${item.end_time ? `–${item.end_time}` : ""}` : ""} · {item.category}
-                    </span>
-                    <span className="block font-medium">{item.title}</span>
-                    <span className="block text-ink-soft">{item.location}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" type="button" onClick={() => setDraft(null)}>
-                Discard
-              </Button>
-              <Button type="button" onClick={requestAccept} disabled={busy || !chosen.length}>
-                Accept selected ({chosen.length})
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       <Modal open={replaceAsk} title="This stop already has activities" onClose={() => setReplaceAsk(false)}>
         <p className="mb-6 text-sm text-ink-soft">
-          Accepting the draft can add it alongside what you already planned, or replace the existing itinerary for this stop.
+          Add the draft next to what you already planned, or replace the existing itinerary for this stop.
         </p>
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" type="button" onClick={() => setReplaceAsk(false)}>
@@ -354,10 +411,10 @@ function ActivityModal({
             <input name="activity_date" type="date" className={inputClass} defaultValue={act?.activity_date ?? day ?? trip.start_date} required />
           </Field>
           <Field label="Start">
-            <input name="start_time" type="time" className={inputClass} defaultValue={act?.start_time ?? ""} />
+            <input name="start_time" type="time" className={inputClass} defaultValue={clock(act?.start_time)} />
           </Field>
           <Field label="End">
-            <input name="end_time" type="time" className={inputClass} defaultValue={act?.end_time ?? ""} />
+            <input name="end_time" type="time" className={inputClass} defaultValue={clock(act?.end_time)} />
           </Field>
         </div>
         <Field label="Category">

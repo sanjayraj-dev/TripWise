@@ -118,18 +118,25 @@ def generate_itinerary_draft(
     style = (body.style or "balanced").lower()
     if style not in STYLES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Style must be one of: {', '.join(STYLES)}.")
-    if dest.lat is None or dest.lng is None:
-        lat, lng = geocode(dest.city, dest.country)
-        if lat is not None:
-            dest.lat, dest.lng = lat, lng
-            db.commit()
-            db.refresh(dest)
-    weather = forecast(dest.lat, dest.lng) if dest.lat is not None and dest.lng is not None else []
+    weather: list[dict] = []
     nearby: list[str] = []
-    if dest.lat is not None and dest.lng is not None:
-        for kind in ("tourism", "restaurant", "cafe"):
-            nearby.extend(p["name"] for p in nearby_places(dest.lat, dest.lng, kind)[:4])
-    existing = [f"{a.title} ({a.activity_date.isoformat()})" for a in dest.activities]
+    try:
+        if dest.lat is None or dest.lng is None:
+            lat, lng = geocode(dest.city, dest.country)
+            if lat is not None:
+                dest.lat, dest.lng = lat, lng
+                db.commit()
+                db.refresh(dest)
+        if dest.lat is not None and dest.lng is not None:
+            weather = forecast(dest.lat, dest.lng) or []
+            nearby = [p.get("name") for p in nearby_places(dest.lat, dest.lng, "tourism")[:6] if p.get("name")]
+    except Exception:
+        weather, nearby = [], []
+    existing = []
+    try:
+        existing = [f"{a.title} ({a.activity_date.isoformat()})" for a in dest.activities]
+    except Exception:
+        existing = []
     trip = dest.trip
     result = draft_itinerary(
         city=dest.city,
@@ -145,7 +152,7 @@ def generate_itinerary_draft(
     )
     result["destination_id"] = dest.id
     result["city"] = dest.city
-    result["existing_count"] = len(dest.activities)
+    result["existing_count"] = len(existing)
     return result
 
 
