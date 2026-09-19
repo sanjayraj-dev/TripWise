@@ -115,35 +115,35 @@ flowchart TB
     classDef data fill:#2F4858,stroke:#6B8F71,stroke-width:2px,color:#F6F1E8
     classDef ext fill:#3D405B,stroke:#81B29A,stroke-width:2px,color:#F6F1E8
 
-    subgraph Client [" Traveler / Admin browser "]
-        UI["React SPA (Vite :5173)\nDashboard, trip workspace, admin"]
-        Map["Leaflet + OSM tiles"]
+    subgraph Client[Traveler browser]
+        UI[React SPA]
+        Map[Leaflet OSM map]
     end
     class UI,Map client
 
-    subgraph Gateway [" FastAPI (:8000) "]
-        Auth["Auth + profile\nJWT, bcrypt, token version"]
-        Trips["Trips, destinations, itinerary"]
-        Money["Expenses, stays, notes, packing"]
-        AI["Itinerary adapter\nai.py + template fallback"]
-        Admin["Admin stats, users, moderation"]
+    subgraph Gateway[FastAPI]
+        Auth[Auth and profile]
+        Trips[Trips destinations itinerary]
+        Money[Expenses stays notes packing]
+        AI[Itinerary adapter]
+        Admin[Admin stats and moderation]
     end
     class Auth,Trips,Money,AI,Admin api
 
-    subgraph Store [" Persistence "]
-        PG[("PostgreSQL 16\nor SQLite fallback")]
+    subgraph Store[Persistence]
+        PG[(PostgreSQL or SQLite)]
     end
     class PG data
 
-    subgraph External [" External adapters "]
-        Geo["Nominatim + Open-Meteo geocoding"]
-        Wx["Open-Meteo forecast"]
-        LLM["SpaceXAI chat completions\n(optional XAI_API_KEY)"]
-        Overpass["OSM Overpass nearby places"]
+    subgraph External[External adapters]
+        Geo[Nominatim geocoding]
+        Wx[Open-Meteo forecast]
+        LLM[SpaceXAI optional]
+        Overpass[OSM nearby places]
     end
     class Geo,Wx,LLM,Overpass ext
 
-    UI -->|"JSON + Bearer JWT\nVite proxy /api"| Auth
+    UI -->|JSON JWT| Auth
     UI --> Map
     Auth --> PG
     Trips --> PG
@@ -155,7 +155,7 @@ flowchart TB
     AI --> Geo
     AI --> Wx
     AI --> Overpass
-    Map -.->|"tiles"| Geo
+    Map -.-> Geo
 ```
 
 ### Itinerary Draft Sequence
@@ -165,36 +165,34 @@ SRS SF-011: generate is a **preview**. Persist only on accept.
 ```mermaid
 sequenceDiagram
     autonumber
-    actor T as Traveler
+    actor Traveler
     participant UI as Itinerary tab
     participant API as FastAPI
-    participant Geo as Nominatim / Open-Meteo
+    participant Geo as Geocoding and weather
     participant LLM as SpaceXAI adapter
     participant DB as PostgreSQL
 
-    T->>UI: Open TripStop, pick style (balanced / food / culture / chill)
-    UI->>API: POST /api/destinations/{id}/itinerary-draft
-    API->>DB: Load destination, trip type, existing activities
-    API->>Geo: Geocode if lat/lng missing; forecast; nearby names
-    API->>LLM: Draft JSON activities (or skip if no XAI_API_KEY)
+    Traveler->>UI: Open a stop and pick a style
+    UI->>API: POST itinerary-draft
+    API->>DB: Load destination and existing activities
+    API->>Geo: Geocode, forecast, nearby names
+    API->>LLM: Request a JSON draft
 
-    alt LLM returns valid activities
-        LLM-->>API: source = ai
+    alt Model returns a valid draft
+        LLM-->>API: source ai
     else Missing key, timeout, or invalid JSON
-        API->>API: City template for each stay date
-        Note over API: source = template, message labeled for the traveler
+        API->>API: Labeled city template
     end
 
-    API-->>UI: Preview only — nothing written
-    UI->>T: Checkboxes, select all / none, Accept selected
+    API-->>UI: Preview only, nothing saved
+    UI->>Traveler: Select items, then accept
 
     alt Stop already has activities
-        T->>UI: Add alongside  or  Replace existing
+        Traveler->>UI: Add alongside or replace
     end
 
-    T->>UI: Confirm
-    UI->>API: POST /api/destinations/{id}/itinerary-draft/accept
-    API->>DB: Insert selected rows (delete first if replace=true)
+    UI->>API: POST itinerary-draft accept
+    API->>DB: Insert selected rows
     API-->>UI: Created activities
 ```
 
