@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-
+from app.routers import match
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,6 +63,7 @@ app.include_router(notes.router)
 app.include_router(admin.router)
 app.include_router(extras.router)
 app.include_router(social.router)
+app.include_router(match.router)
 
 
 @app.get("/api/health")
