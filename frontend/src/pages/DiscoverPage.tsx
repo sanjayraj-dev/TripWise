@@ -31,6 +31,9 @@ export function DiscoverPage() {
       <p className="mt-2 max-w-xl text-ink-soft">
         Public groups going where you’re going. Open groups let you join immediately; request groups wait for the owner.
       </p>
+
+      <MatchScoreCard />
+
       <input
         className={inputClass + " mt-6 max-w-sm"}
         placeholder="Filter by city — Kyoto, Lisbon, Osaka…"
@@ -62,6 +65,97 @@ export function DiscoverPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function MatchScoreCard() {
+  const [destination, setDestination] = useState("Kyoto");
+  const [startDate, setStartDate] = useState("2026-10-10");
+  const [endDate, setEndDate] = useState("2026-10-16");
+  const [interests, setInterests] = useState("culture, leisure");
+  const [seatsNeeded, setSeatsNeeded] = useState(1);
+  const [matches, setMatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api<{ matches: any[] }>("/api/match/design", {
+        method: "POST",
+        json: {
+          destination,
+          startDate,
+          endDate,
+          interests: interests.split(",").map((s) => s.trim()).filter(Boolean),
+          seatsNeeded,
+        },
+      });
+      setMatches(data.matches);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not rank trips");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const overlap = matches.filter((m) => m.bucket === "overlap");
+  const nearby = matches.filter((m) => m.bucket === "nearby");
+
+  return (
+    <div className="mt-8 rounded-[1.6rem] border border-line bg-white p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-terracotta">Design your trip</p>
+      <h2 className="serif mt-1 text-3xl">Find overlapping crews</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        Enter a destination and dates. The model ranks public trips by overlap, then nearby ones.
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <input className={inputClass} value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Destination" />
+        <input className={inputClass} type="number" min={1} value={seatsNeeded} onChange={(e) => setSeatsNeeded(Number(e.target.value))} placeholder="Seats needed" />
+        <input className={inputClass} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <input className={inputClass} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        <input className={inputClass + " sm:col-span-2"} value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="Interests — culture, leisure, adventure" />
+      </div>
+
+      <Button onClick={run} disabled={loading} className="mt-4">
+        {loading ? "Ranking…" : "Find matches"}
+      </Button>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+      {!!overlap.length && (
+        <>
+          <h3 className="serif mt-6 text-2xl">Overlapping</h3>
+          <MatchList items={overlap} />
+        </>
+      )}
+      {!!nearby.length && (
+        <>
+          <h3 className="serif mt-6 text-2xl">Nearby, different dates</h3>
+          <MatchList items={nearby} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function MatchList({ items }: { items: any[] }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {items.map((m) => (
+        <div key={m.tripId} className="flex items-center justify-between rounded-2xl bg-paper-2 px-4 py-3">
+          <div>
+            <div className="font-medium">{m.title}</div>
+            <div className="text-sm text-ink-soft">
+              {m.owner} · {(m.cities || []).join(", ")} · {m.startDate} → {m.endDate}
+            </div>
+            <div className="text-sm text-ink-soft">{m.reason}</div>
+          </div>
+          <div className="serif text-3xl">{m.score}</div>
+        </div>
+      ))}
     </div>
   );
 }

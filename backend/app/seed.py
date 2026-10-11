@@ -124,7 +124,90 @@ def seed_if_empty(db: Session) -> None:
         seats=3,
         looking_for_ride=True,
     )
-    db.add_all([kyoto, goa, lisbon, osaka])
+	
+    hampi = Trip(
+        user_id=traveler.id, title="Hampi Slow",
+        start_date=date(2027, 2, 6), end_date=date(2027, 2, 11),
+        estimated_budget=Decimal("60000"), trip_type="culture", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=3,
+    )
+    udaipur = Trip(
+        user_id=traveler.id, title="Udaipur Palaces",
+        start_date=date(2027, 4, 18), end_date=date(2027, 4, 22),
+        estimated_budget=Decimal("70000"), trip_type="culture", currency="INR",
+        visibility="public", join_mode="request", is_public=True, seats=2,
+    )
+    seoul = Trip(
+        user_id=kenji.id, title="Seoul Night Markets",
+        start_date=date(2026, 11, 20), end_date=date(2026, 11, 25),
+        estimated_budget=Decimal("110000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=2,
+    )
+    taipei = Trip(
+        user_id=kenji.id, title="Taipei Eat Street",
+        start_date=date(2027, 1, 14), end_date=date(2027, 1, 19),
+        estimated_budget=Decimal("95000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=3,
+    )
+    fukuoka = Trip(
+        user_id=kenji.id, title="Fukuoka Ramen Run",
+        start_date=date(2027, 3, 3), end_date=date(2027, 3, 7),
+        estimated_budget=Decimal("80000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=2,
+    )
+    coorg = Trip(
+        user_id=meera.id, title="Coorg Trek",
+        start_date=date(2026, 8, 15), end_date=date(2026, 8, 18),
+        estimated_budget=Decimal("25000"), trip_type="adventure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=4,
+    )
+    manali = Trip(
+        user_id=meera.id, title="Manali High Route",
+        start_date=date(2026, 9, 4), end_date=date(2026, 9, 10),
+        estimated_budget=Decimal("55000"), trip_type="adventure", currency="INR",
+        visibility="public", join_mode="request", is_public=True, seats=3,
+    )
+    rishikesh = Trip(
+        user_id=meera.id, title="Rishikesh Raft",
+        start_date=date(2027, 1, 22), end_date=date(2027, 1, 26),
+        estimated_budget=Decimal("30000"), trip_type="adventure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=4,
+    )
+    ladakh = Trip(
+        user_id=meera.id, title="Ladakh Loop",
+        start_date=date(2027, 6, 8), end_date=date(2027, 6, 16),
+        estimated_budget=Decimal("90000"), trip_type="adventure", currency="INR",
+        visibility="public", join_mode="request", is_public=True, seats=2,
+    )
+    lisbon_coast = Trip(
+        user_id=lucas.id, title="Lisbon Coast",
+        start_date=date(2026, 11, 5), end_date=date(2026, 11, 9),
+        estimated_budget=Decimal("80000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=3,
+    )
+    porto_week = Trip(
+        user_id=lucas.id, title="Porto Week",
+        start_date=date(2027, 2, 16), end_date=date(2027, 2, 21),
+        estimated_budget=Decimal("85000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=2,
+    )
+    algarve = Trip(
+        user_id=lucas.id, title="Algarve Drive",
+        start_date=date(2027, 4, 10), end_date=date(2027, 4, 15),
+        estimated_budget=Decimal("100000"), trip_type="leisure", currency="INR",
+        visibility="public", join_mode="request", is_public=True, seats=3,
+    )
+    barcelona = Trip(
+        user_id=lucas.id, title="Barcelona Long Weekend",
+        start_date=date(2027, 5, 21), end_date=date(2027, 5, 25),
+        estimated_budget=Decimal("120000"), trip_type="culture", currency="INR",
+        visibility="public", join_mode="open", is_public=True, seats=2,
+    )
+    db.add_all([
+        kyoto, goa, lisbon, osaka,
+        hampi, udaipur, seoul, taipei, fukuoka,
+        coorg, manali, rishikesh, ladakh,
+        lisbon_coast, porto_week, algarve, barcelona,])
     db.flush()
 
     tokyo = Destination(
@@ -157,8 +240,40 @@ def seed_if_empty(db: Session) -> None:
         arrival_date=date(2026, 10, 8), departure_date=date(2026, 10, 12),
         lat=34.6937, lng=135.5023, notes="Dotonbori after dark. Cash for kushikatsu.",
     )
+
+	
     db.add_all([tokyo, kyo, panaji, lis, porto, osaka_stop])
+    extra_stops = [
+        Destination(trip_id=hampi.id, sequence_no=1, city="Hampi", country="India",
+                    arrival_date=date(2027, 2, 6), departure_date=date(2027, 2, 11), lat=15.3350, lng=76.4600),
+        Destination(trip_id=udaipur.id, sequence_no=1, city="Udaipur", country="India",
+                    arrival_date=date(2027, 4, 18), departure_date=date(2027, 4, 22), lat=24.5854, lng=73.7125),
+        Destination(trip_id=seoul.id, sequence_no=1, city="Seoul", country="South Korea",
+                    arrival_date=date(2026, 11, 20), departure_date=date(2026, 11, 25), lat=37.5665, lng=126.9780),
+        Destination(trip_id=taipei.id, sequence_no=1, city="Taipei", country="Taiwan",
+                    arrival_date=date(2027, 1, 14), departure_date=date(2027, 1, 19), lat=25.0330, lng=121.5654),
+        Destination(trip_id=fukuoka.id, sequence_no=1, city="Fukuoka", country="Japan",
+                    arrival_date=date(2027, 3, 3), departure_date=date(2027, 3, 7), lat=33.5904, lng=130.4017),
+        Destination(trip_id=coorg.id, sequence_no=1, city="Madikeri", country="India",
+                    arrival_date=date(2026, 8, 15), departure_date=date(2026, 8, 18), lat=12.4244, lng=75.7382),
+        Destination(trip_id=manali.id, sequence_no=1, city="Manali", country="India",
+                    arrival_date=date(2026, 9, 4), departure_date=date(2026, 9, 10), lat=32.2396, lng=77.1887),
+        Destination(trip_id=rishikesh.id, sequence_no=1, city="Rishikesh", country="India",
+                    arrival_date=date(2027, 1, 22), departure_date=date(2027, 1, 26), lat=30.0869, lng=78.2676),
+        Destination(trip_id=ladakh.id, sequence_no=1, city="Leh", country="India",
+                    arrival_date=date(2027, 6, 8), departure_date=date(2027, 6, 16), lat=34.1526, lng=77.5771),
+        Destination(trip_id=lisbon_coast.id, sequence_no=1, city="Lisbon", country="Portugal",
+                    arrival_date=date(2026, 11, 5), departure_date=date(2026, 11, 9), lat=38.7223, lng=-9.1393),
+        Destination(trip_id=porto_week.id, sequence_no=1, city="Porto", country="Portugal",
+                    arrival_date=date(2027, 2, 16), departure_date=date(2027, 2, 21), lat=41.1579, lng=-8.6291),
+        Destination(trip_id=algarve.id, sequence_no=1, city="Lagos", country="Portugal",
+                    arrival_date=date(2027, 4, 10), departure_date=date(2027, 4, 15), lat=37.1028, lng=-8.6730),
+        Destination(trip_id=barcelona.id, sequence_no=1, city="Barcelona", country="Spain",
+                    arrival_date=date(2027, 5, 21), departure_date=date(2027, 5, 25), lat=41.3874, lng=2.1686),
+    ]
+    db.add_all(extra_stops)
     db.flush()
+   
 
     db.add_all(
         [
