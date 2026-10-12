@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.access import ensure_owner_member, load_destination, load_owned_trip, serialize_trip_detail
+from app.core.access import ensure_owner_member, load_destination, load_owned_trip, require_owner, serialize_trip_detail, trip_options
 from app.core.ai import draft_itinerary
 from app.core.deps import get_traveler
 from app.core.geo import forecast
@@ -16,6 +16,7 @@ from app.models.activity import Activity
 from app.models.destination import Destination
 from app.models.document import TravelDocument
 from app.models.expense import Expense
+from app.models.member import TripMember
 from app.models.note import Note
 from app.models.packing import PackingItem
 from app.models.trip import Trip
@@ -27,9 +28,12 @@ router = APIRouter(tags=["extras"])
 @router.post("/api/trips/{trip_id}/share")
 def share_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     trip = load_owned_trip(db, trip_id, user)
+    require_owner(trip, user)
     if not trip.share_token:
         trip.share_token = secrets.token_urlsafe(8)
     trip.is_public = True
+    if (trip.visibility or "private") == "private":
+        trip.visibility = "unlisted"
     db.commit()
     return {"share_token": trip.share_token, "url": f"/p/{trip.share_token}"}
 
@@ -37,6 +41,7 @@ def share_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends
 @router.post("/api/trips/{trip_id}/unshare")
 def unshare_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     trip = load_owned_trip(db, trip_id, user)
+    require_owner(trip, user)
     trip.is_public = False
     db.commit()
     return {"message": "Link disabled."}
@@ -60,7 +65,9 @@ def public_trip(token: str, db: Session = Depends(get_db)):
     if trip is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This itinerary is not public.")
     data = serialize_trip_detail(trip)
-    data.pop("share_token", None)
+    for key in ("share_token", "documents", "packing", "notes", "members"):
+        data.pop(key, None)
+    data["expenses"] = []
     return data
 
 
@@ -119,21 +126,19 @@ def duplicate_trip(trip_id: int, db: Session = Depends(get_db), user: User = Dep
     return serialize_trip_detail(load_owned_trip(db, copy.id, user), user)
 
 
-@router.get("/api/insights")
-def insights(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
-    trips = (
+def _trips_for_user(db: Session, user: User) -> list[Trip]:
+    member_ids = db.query(TripMember.trip_id).filter(TripMember.user_id == user.id, TripMember.status == "active")
+    return (
         db.query(Trip)
-        .options(
-            selectinload(Trip.destinations).selectinload(Destination.expenses),
-            selectinload(Trip.destinations).selectinload(Destination.activities),
-            selectinload(Trip.destinations).selectinload(Destination.accommodations),
-            selectinload(Trip.notes),
-            selectinload(Trip.packing_items),
-            selectinload(Trip.documents),
-        )
-        .filter(Trip.user_id == user.id)
+        .options(*trip_options())
+        .filter((Trip.user_id == user.id) | (Trip.id.in_(member_ids)))
         .all()
     )
+
+
+@router.get("/api/insights")
+def insights(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
+    trips = _trips_for_user(db, user)
     by_cat: dict[str, float] = defaultdict(float)
     by_month: dict[str, float] = defaultdict(float)
     cities: dict[str, int] = defaultdict(int)
@@ -168,12 +173,7 @@ def insights(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
 
 @router.get("/api/calendar")
 def calendar(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
-    trips = (
-        db.query(Trip)
-        .options(selectinload(Trip.destinations).selectinload(Destination.activities))
-        .filter(Trip.user_id == user.id)
-        .all()
-    )
+    trips = _trips_for_user(db, user)
     events = []
     for t in trips:
         events.append({

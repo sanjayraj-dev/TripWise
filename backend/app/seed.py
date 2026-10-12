@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.access import ensure_owner_member
 from app.core.security import hash_password
 from app.models.accommodation import Accommodation
 from app.models.activity import Activity
@@ -13,6 +14,7 @@ from app.models.member import TripMember
 from app.models.message import ChatMessage
 from app.models.note import Note
 from app.models.packing import PackingItem
+from app.models.notification import Notification
 from app.models.presence import EmergencyContact
 from app.models.trip import Trip
 from app.models.user import User
@@ -83,7 +85,7 @@ def seed_if_empty(db: Session) -> None:
         trip_type="culture",
         currency="INR",
         visibility="public",
-        join_mode="open",
+        join_mode="request",
         is_public=True,
         seats=2,
     )
@@ -119,7 +121,7 @@ def seed_if_empty(db: Session) -> None:
         trip_type="leisure",
         currency="INR",
         visibility="public",
-        join_mode="open",
+        join_mode="request",
         is_public=True,
         seats=3,
         looking_for_ride=True,
@@ -129,7 +131,7 @@ def seed_if_empty(db: Session) -> None:
         user_id=traveler.id, title="Hampi Slow",
         start_date=date(2027, 2, 6), end_date=date(2027, 2, 11),
         estimated_budget=Decimal("60000"), trip_type="culture", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=3,
+        visibility="public", join_mode="request", is_public=True, seats=3,
     )
     udaipur = Trip(
         user_id=traveler.id, title="Udaipur Palaces",
@@ -141,25 +143,25 @@ def seed_if_empty(db: Session) -> None:
         user_id=kenji.id, title="Seoul Night Markets",
         start_date=date(2026, 11, 20), end_date=date(2026, 11, 25),
         estimated_budget=Decimal("110000"), trip_type="leisure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=2,
+        visibility="public", join_mode="request", is_public=True, seats=2,
     )
     taipei = Trip(
         user_id=kenji.id, title="Taipei Eat Street",
         start_date=date(2027, 1, 14), end_date=date(2027, 1, 19),
         estimated_budget=Decimal("95000"), trip_type="leisure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=3,
+        visibility="public", join_mode="request", is_public=True, seats=3,
     )
     fukuoka = Trip(
         user_id=kenji.id, title="Fukuoka Ramen Run",
         start_date=date(2027, 3, 3), end_date=date(2027, 3, 7),
         estimated_budget=Decimal("80000"), trip_type="leisure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=2,
+        visibility="public", join_mode="request", is_public=True, seats=2,
     )
     coorg = Trip(
         user_id=meera.id, title="Coorg Trek",
         start_date=date(2026, 8, 15), end_date=date(2026, 8, 18),
         estimated_budget=Decimal("25000"), trip_type="adventure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=4,
+        visibility="public", join_mode="request", is_public=True, seats=4,
     )
     manali = Trip(
         user_id=meera.id, title="Manali High Route",
@@ -171,7 +173,7 @@ def seed_if_empty(db: Session) -> None:
         user_id=meera.id, title="Rishikesh Raft",
         start_date=date(2027, 1, 22), end_date=date(2027, 1, 26),
         estimated_budget=Decimal("30000"), trip_type="adventure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=4,
+        visibility="public", join_mode="request", is_public=True, seats=4,
     )
     ladakh = Trip(
         user_id=meera.id, title="Ladakh Loop",
@@ -183,13 +185,13 @@ def seed_if_empty(db: Session) -> None:
         user_id=lucas.id, title="Lisbon Coast",
         start_date=date(2026, 11, 5), end_date=date(2026, 11, 9),
         estimated_budget=Decimal("80000"), trip_type="leisure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=3,
+        visibility="public", join_mode="request", is_public=True, seats=3,
     )
     porto_week = Trip(
         user_id=lucas.id, title="Porto Week",
         start_date=date(2027, 2, 16), end_date=date(2027, 2, 21),
         estimated_budget=Decimal("85000"), trip_type="leisure", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=2,
+        visibility="public", join_mode="request", is_public=True, seats=2,
     )
     algarve = Trip(
         user_id=lucas.id, title="Algarve Drive",
@@ -201,7 +203,7 @@ def seed_if_empty(db: Session) -> None:
         user_id=lucas.id, title="Barcelona Long Weekend",
         start_date=date(2027, 5, 21), end_date=date(2027, 5, 25),
         estimated_budget=Decimal("120000"), trip_type="culture", currency="INR",
-        visibility="public", join_mode="open", is_public=True, seats=2,
+        visibility="public", join_mode="request", is_public=True, seats=2,
     )
     db.add_all([
         kyoto, goa, lisbon, osaka,
@@ -273,6 +275,55 @@ def seed_if_empty(db: Session) -> None:
     ]
     db.add_all(extra_stops)
     db.flush()
+    madikeri = next(d for d in extra_stops if d.city == "Madikeri")
+    manali_stop = next(d for d in extra_stops if d.city == "Manali")
+    rishi_stop = next(d for d in extra_stops if d.city == "Rishikesh")
+    db.add_all(
+        [
+            Expense(
+                destination_id=madikeri.id,
+                amount=Decimal("4800"),
+                category="Stay",
+                expense_date=date(2026, 8, 15),
+                description="Homestay in Madikeri",
+            ),
+            Expense(
+                destination_id=madikeri.id,
+                amount=Decimal("1600"),
+                category="Food",
+                expense_date=date(2026, 8, 16),
+                description="Pandi curry and akki roti",
+            ),
+            Expense(
+                destination_id=madikeri.id,
+                amount=Decimal("2200"),
+                category="Activities",
+                expense_date=date(2026, 8, 16),
+                description="Abbey Falls jeep",
+            ),
+            Expense(
+                destination_id=manali_stop.id,
+                amount=Decimal("6200"),
+                category="Stay",
+                expense_date=date(2026, 9, 4),
+                description="Old Manali loft",
+            ),
+            Expense(
+                destination_id=manali_stop.id,
+                amount=Decimal("1800"),
+                category="Transport",
+                expense_date=date(2026, 9, 5),
+                description="Rohtang share jeep",
+            ),
+            Expense(
+                destination_id=rishi_stop.id,
+                amount=Decimal("3500"),
+                category="Activities",
+                expense_date=date(2027, 1, 23),
+                description="Ganges rafting",
+            ),
+        ]
+    )
    
 
     db.add_all(
@@ -521,8 +572,49 @@ def seed_if_empty(db: Session) -> None:
             TripMember(trip_id=lisbon.id, user_id=lucas.id, role="member", status="pending"),
             TripMember(trip_id=osaka.id, user_id=kenji.id, role="owner", status="active"),
             TripMember(trip_id=osaka.id, user_id=meera.id, role="member", status="active"),
+            TripMember(trip_id=coorg.id, user_id=kenji.id, role="member", status="pending"),
         ]
     )
+    db.add_all(
+        [
+            Notification(
+                user_id=traveler.id,
+                actor_user_id=lucas.id,
+                trip_id=lisbon.id,
+                kind="join_request",
+                title="Lucas Costa wants to join Lisbon Light",
+                body="Open the Group tab to approve or decline.",
+            ),
+            Notification(
+                user_id=meera.id,
+                actor_user_id=kenji.id,
+                trip_id=coorg.id,
+                kind="join_request",
+                title="Kenji Mori wants to join Coorg Trek",
+                body="Open the Group tab to approve or decline.",
+            ),
+        ]
+    )
+    for t in (
+        kyoto,
+        goa,
+        lisbon,
+        osaka,
+        hampi,
+        udaipur,
+        seoul,
+        taipei,
+        fukuoka,
+        coorg,
+        manali,
+        rishikesh,
+        ladakh,
+        lisbon_coast,
+        porto_week,
+        algarve,
+        barcelona,
+    ):
+        ensure_owner_member(db, t)
     db.add_all(
         [
             ChatMessage(trip_id=kyoto.id, user_id=kenji.id, body="Dawn at Fushimi — I'll bring the headlamps."),

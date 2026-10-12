@@ -7,12 +7,21 @@ export function GroupTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
   const active = members.filter((m) => m.status === "active");
   const pending = members.filter((m) => m.status === "pending");
   const isOwner = trip.my_role === "owner";
+  const hasOwnerRow = active.some((m) => m.role === "owner");
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <section>
         <h2 className="serif text-2xl">Crew</h2>
         <ul className="mt-4 space-y-2">
+          {!hasOwnerRow && (
+            <li className="flex items-center justify-between rounded-2xl border border-line bg-white/60 px-4 py-3">
+              <div>
+                <p className="font-medium">{isOwner ? "You" : "Trip owner"}</p>
+                <p className="text-xs text-muted">owner</p>
+              </div>
+            </li>
+          )}
           {active.map((m) => (
             <li key={m.id} className="flex items-center justify-between rounded-2xl border border-line bg-white/60 px-4 py-3">
               <div>
@@ -41,7 +50,7 @@ export function GroupTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
         )}
         {isOwner && (
           <p className="mt-6 text-sm text-ink-soft">
-            Visibility is <strong>{trip.visibility}</strong>, join mode <strong>{trip.join_mode}</strong>. Change it in Edit.
+            This group is <strong>{trip.visibility}</strong>. Strangers on Discover send a request — they cannot see chat, budget, or the itinerary until you approve.
           </p>
         )}
         {!isOwner && (
@@ -62,21 +71,23 @@ export function GroupTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
 }
 
 function PendingRow({ tripId, member, canApprove, onChange }: { tripId: number; member: Member; canApprove: boolean; onChange: () => void }) {
+  async function decide(path: "approve" | "decline") {
+    await api(`/api/trips/${tripId}/members/${member.user_id}/${path}`, { method: "POST" });
+    onChange();
+  }
   return (
-    <li className="flex items-center justify-between rounded-2xl border border-line bg-white/60 px-4 py-3">
+    <li className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/60 px-4 py-3">
       <div>
         <p className="font-medium">{member.full_name}</p>
-        <p className="text-xs text-muted">{member.email}</p>
+        <p className="text-xs text-muted">{member.email}{member.home_city ? ` · ${member.home_city}` : ""}</p>
       </div>
       {canApprove && (
-        <Button
-          onClick={async () => {
-            await api(`/api/trips/${tripId}/members/${member.user_id}/approve`, { method: "POST" });
-            onChange();
-          }}
-        >
-          Approve
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button onClick={() => decide("approve")}>Approve</Button>
+          <Button variant="ghost" onClick={() => decide("decline")}>
+            Decline
+          </Button>
+        </div>
       )}
     </li>
   );

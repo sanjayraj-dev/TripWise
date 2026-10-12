@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { MapView } from "../../components/MapView";
 import { Button, ConfirmDialog, Empty, Field, Modal, inputClass } from "../../components/ui";
 import { prettyDate } from "../../lib";
-import type { Destination, TripDetail } from "../../types";
+import type { Destination, RouteMapPayload, TripDetail } from "../../types";
+
+type Here = { lat: number; lng: number };
 
 type WeatherDay = { date: string; label: string; t_max: number; t_min: number; precip: number };
 
@@ -17,6 +19,82 @@ export function RouteTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
 
   const mapped = trip.destinations.filter((d) => d.lat && d.lng);
   const selected = trip.destinations.find((d) => d.id === selectedId) ?? mapped[0] ?? null;
+  const destKey = trip.destinations.map((d) => `${d.id}:${d.lat}:${d.lng}:${d.city}`).join("|");
+  const [here, setHere] = useState<Here | null>(null);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setHere({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setHere(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }
+    );
+  }, []);
+
+  const routeQ = useQuery({
+    queryKey: ["route-map", trip.id, destKey, here?.lat, here?.lng],
+    queryFn: () => {
+      const q = new URLSearchParams();
+      if (here) {
+        q.set("fromLat", String(here.lat));
+        q.set("fromLng", String(here.lng));
+        q.set("fromLabel", "You");
+      }
+      const suffix = q.toString() ? `?${q.toString()}` : "";
+      return api<RouteMapPayload>(`/api/trips/${trip.id}/route-map${suffix}`);
+    },
+    enabled: trip.destinations.length > 0,
+    retry: false,
+  });
+  const fallback = useMemo<RouteMapPayload | null>(() => {
+    const stops = mapped.map((d, i) => ({
+      id: d.id,
+      city: d.city,
+      country: d.country,
+      label: d.city,
+      lat: d.lat as number,
+      lng: d.lng as number,
+      kind: "stop" as const,
+      sequence: i + 1,
+    }));
+    if (!stops.length) return null;
+    return {
+      origin: stops[0],
+      destination: stops[stops.length - 1],
+      stops,
+      vias: [],
+      corridor: stops.map((s) => ({
+        kind: "stop" as const,
+        id: s.id,
+        label: s.label,
+        lat: s.lat,
+        lng: s.lng,
+        sequence: s.sequence,
+      })),
+      geometry: stops.map((s) => [s.lat, s.lng] as [number, number]),
+      flightGeometry: [],
+      driveGeometry: [],
+      distanceKm: 0,
+      durationMin: 0,
+      legs: [],
+      mode: stops.length > 1 ? "straight" : "place",
+      source: "client",
+      message: null,
+      geometryPointCount: stops.length,
+    };
+  }, [mapped]);
+  const route = routeQ.data ?? fallback;
+  const serverPreview = useMemo(() => {
+    if (!route) return null;
+    const { geometry, flightGeometry, driveGeometry, ...rest } = route;
+    return {
+      ...rest,
+      geometryPointCount: geometry?.length ?? rest.geometryPointCount ?? 0,
+      flightPointCount: flightGeometry?.length ?? 0,
+      drivePointCount: driveGeometry?.length ?? 0,
+      geometryPreview: (geometry ?? []).slice(0, 3),
+    };
+  }, [route]);
 
   async function save(e: React.FormEvent<HTMLFormElement>, dest?: Destination) {
     e.preventDefault();
@@ -71,11 +149,47 @@ export function RouteTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
         />
       ) : (
         <div className="mb-6 space-y-4">
-          <MapView
-            points={mapped.map((d) => ({ id: d.id, city: d.city, lat: d.lat as number, lng: d.lng as number }))}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+          <MapView route={route} selectedId={selectedId} onSelect={setSelectedId} height={420} />
+          {!!route?.corridor?.length && (
+            <ol className="flex flex-wrap items-center gap-2 rounded-[1.4rem] border border-line bg-white/70 px-4 py-3 text-sm">
+              {route.corridor.map((item, i) => (
+                <li key={`${item.kind}-${item.label}-${i}`} className="flex items-center gap-2">
+                  {i > 0 && <span className="text-muted">→</span>}
+                  {item.kind === "stop" ? (
+                    <button
+                      type="button"
+                      onClick={() => item.id && setSelectedId(item.id)}
+                      className={`rounded-full px-3 py-1 ${item.id === selectedId ? "bg-ink text-paper" : "bg-paper-2"}`}
+                    >
+                      {item.label}
+                    </button>
+                  ) : item.kind === "here" || item.kind === "home" ? (
+                    <span className="rounded-full bg-navy px-3 py-1 text-paper">{item.label}</span>
+                  ) : (
+                    <span className="rounded-full bg-gold/25 px-3 py-1 text-ink-soft">{item.label}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {serverPreview && (
+            <details className="rounded-[1.4rem] border border-line bg-white/70 p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                Server response · <span className="font-mono text-xs text-muted">GET /api/trips/{trip.id}/route-map</span>
+              </summary>
+              <p className="mt-2 text-xs text-ink-soft">
+                This is the JSON the API sends back — origin, via cities, destination, distance, and a preview of the
+                road geometry. Open the same URL in{" "}
+                <a className="underline" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
+                  /docs
+                </a>{" "}
+                during the review.
+              </p>
+              <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-navy p-4 text-xs leading-relaxed text-paper">
+                {JSON.stringify(serverPreview, null, 2)}
+              </pre>
+            </details>
+          )}
           {mapped.length === 0 && (
             <p className="rounded-[1.6rem] border border-dashed border-line p-6 text-center text-sm text-muted">
               These stops do not have coordinates yet. Edit a city name if geocoding missed it.

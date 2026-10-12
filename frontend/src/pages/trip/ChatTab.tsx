@@ -8,6 +8,7 @@ import type { ChatMsg } from "../../types";
 export function ChatTab({ tripId }: { tripId: number }) {
   const { user } = useAuth();
   const [text, setText] = useState("");
+  const [error, setError] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
   const q = useQuery({
     queryKey: ["chat", tripId],
@@ -22,9 +23,14 @@ export function ChatTab({ tripId }: { tripId: number }) {
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim()) return;
-    await api(`/api/trips/${tripId}/messages`, { method: "POST", json: { body: text } });
-    setText("");
-    q.refetch();
+    setError("");
+    try {
+      await api(`/api/trips/${tripId}/messages`, { method: "POST", json: { body: text } });
+      setText("");
+      q.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send.");
+    }
   }
 
   return (
@@ -41,6 +47,7 @@ export function ChatTab({ tripId }: { tripId: number }) {
         })}
         <div ref={bottom} />
       </div>
+      {error && <p className="px-4 pb-1 text-xs text-danger">{error}</p>}
       <form onSubmit={send} className="flex gap-2 border-t border-line p-3">
         <input className={inputClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Message the crew…" />
         <Button type="submit">Send</Button>

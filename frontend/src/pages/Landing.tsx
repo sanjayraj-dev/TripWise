@@ -19,10 +19,10 @@ const steps = [
 export function Landing() {
   return (
     <PublicFrame>
-      <section className="relative mx-auto max-w-6xl overflow-hidden rounded-[2.2rem] px-0 lg:mt-4">
-        <img src="/art/hero.jpg" alt="" className="h-[78vh] min-h-[520px] w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/55 to-navy/20" />
-        <div className="absolute inset-0 flex flex-col justify-end p-8 sm:p-14">
+      <section className="relative mx-auto mt-4 max-w-6xl overflow-hidden rounded-[2.2rem] bg-navy">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-terracotta/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-80 w-80 rounded-full bg-gold/20 blur-3xl" />
+        <div className="relative flex min-h-[520px] flex-col justify-end p-8 sm:p-14">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-terracotta">Smart travel companion · v1.3</p>
           <h1 className="serif mt-4 max-w-2xl text-5xl leading-[1.02] text-white sm:text-7xl">
             The trip, held
@@ -82,8 +82,15 @@ export function Landing() {
       </section>
 
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-16 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-[1.8rem]">
-          <img src="/art/cover-japan.jpg" alt="" className="h-80 w-full object-cover" />
+        <div className="rounded-[1.8rem] border border-line bg-white/70 p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-terracotta">Demo trip</p>
+          <h3 className="serif mt-3 text-3xl">Kyoto Autumn</h3>
+          <p className="mt-2 text-sm text-ink-soft">Tokyo → Kyoto · 10–16 Oct 2026 · culture</p>
+          <ul className="mt-6 space-y-2 text-sm text-ink-soft">
+            <li>Day-wise script, stays, spend, packing, papers</li>
+            <li>Crew matcher ranks overlapping public groups</li>
+            <li>Join requests wait for the owner — no walk-ins</li>
+          </ul>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-terracotta">Seeded briefing</p>
@@ -98,7 +105,7 @@ export function Landing() {
       </section>
 
       <footer className="border-t border-line px-6 py-10 text-center text-xs text-muted">
-        TripWise · Software Engineering Laboratory · IEEE SRS v1.2 · Academic Year 2026–2027
+        TripWise · Software Engineering Laboratory · IEEE SRS v1.3 · Academic Year 2026–2027
       </footer>
     </PublicFrame>
   );

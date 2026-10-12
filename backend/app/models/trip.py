@@ -23,7 +23,7 @@ class Trip(Base):
     share_token: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility: Mapped[str] = mapped_column(String(20), default="private")  # private | unlisted | public
-    join_mode: Mapped[str] = mapped_column(String(20), default="request")  # open | request
+    join_mode: Mapped[str] = mapped_column(String(20), default="request")  # always request; open is ignored
     seats: Mapped[int] = mapped_column(Integer, default=0)
     looking_for_ride: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

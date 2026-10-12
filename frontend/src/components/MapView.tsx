@@ -1,125 +1,125 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import type { RouteMapPayload, RouteStop, RouteVia } from "../types";
 
-type Point = { id: number; city: string; lat: number; lng: number };
-
-async function roadRoute(points: [number, number][]) {
-  if (points.length < 2) return null;
-  const coords = points.map(([lat, lng]) => `${lng},${lat}`).join(";");
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const route = data?.routes?.[0];
-    const line = route?.geometry?.coordinates;
-    if (!line?.length) return null;
-    return {
-      line: line.map(([lng, lat]: number[]) => [lat, lng] as [number, number]),
-      distanceM: route.distance as number,
-      durationS: route.duration as number,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function getLocation(): Promise<[number, number] | null> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  });
-}
-
-function formatLeg(distanceM: number, durationS: number) {
-  const km = Math.round(distanceM / 1000);
-  const hours = Math.floor(durationS / 3600);
-  const mins = Math.round((durationS % 3600) / 60);
-  const time = hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`;
-  return `${km.toLocaleString()} km · ${time}`;
+function formatLeg(distanceKm: number, durationMin: number) {
+  if (!distanceKm && !durationMin) return "";
+  const km = Math.round(distanceKm).toLocaleString("en-IN");
+  const hours = Math.floor(durationMin / 60);
+  const mins = durationMin % 60;
+  const time = durationMin ? (hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`) : "";
+  return time ? `${km} km · ${time}` : `${km} km`;
 }
 
 export function MapView({
-  points,
-  height = 320,
+  route,
   selectedId,
   onSelect,
+  height = 420,
 }: {
-  points: Point[];
-  height?: number;
+  route: RouteMapPayload | null;
   selectedId?: number | null;
   onSelect?: (id: number) => void;
+  height?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [label, setLabel] = useState("");
+  const stops = route?.stops ?? [];
+  const vias = route?.vias ?? [];
+  const origin = route?.origin;
+  const drive = route?.driveGeometry?.length ? route.driveGeometry : route?.mode === "driving" ? route.geometry : [];
+  const flight = route?.flightGeometry ?? [];
+  const pinKey = [
+    origin ? `${origin.kind}:${origin.lat}:${origin.lng}` : "",
+    stops.map((s) => `${s.id}:${s.lat}`).join("|"),
+    vias.map((v) => v.label).join(","),
+    drive.length,
+    flight.length,
+    selectedId ?? "",
+    route?.mode ?? "",
+  ].join(":");
 
   useEffect(() => {
-    if (!ref.current || !points.length) return;
-    const map = L.map(ref.current, { scrollWheelZoom: false, attributionControl: true });
+    if (!ref.current) return;
+    if (!stops.length && !origin) return;
+    const map = L.map(ref.current, { scrollWheelZoom: true, attributionControl: true });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap",
     }).addTo(map);
 
-    const latlngs = points.map((p) => [p.lat, p.lng] as [number, number]);
-    latlngs.forEach((ll, i) => {
-      const selected = points[i].id === selectedId;
+    const bounds: [number, number][] = [];
+
+    if (flight.length > 1) {
+      const line = flight.map(([lat, lng]) => [lat, lng] as [number, number]);
+      L.polyline(line, { color: "#1B2A4A", weight: 3, opacity: 0.75, dashArray: "8 10" }).addTo(map);
+      bounds.push(...line);
+    }
+    if (drive.length > 1) {
+      const dashed = route?.mode === "straight";
+      const line = drive.map(([lat, lng]) => [lat, lng] as [number, number]);
+      L.polyline(line, {
+        color: "#E07A5F",
+        weight: dashed ? 3 : 5,
+        opacity: 0.9,
+        dashArray: dashed ? "6 8" : undefined,
+      }).addTo(map);
+      bounds.push(...line);
+    } else if (!flight.length && (route?.geometry?.length ?? 0) > 1) {
+      const line = (route?.geometry ?? []).map(([lat, lng]) => [lat, lng] as [number, number]);
+      L.polyline(line, { color: "#E07A5F", weight: 5, opacity: 0.9 }).addTo(map);
+      bounds.push(...line);
+    }
+
+    vias.forEach((v: RouteVia) => {
+      const ll = [v.lat, v.lng] as [number, number];
+      bounds.push(ll);
       const icon = L.divIcon({
         className: "",
-        html: `<div class="tw-pin${selected ? " is-on" : ""}">${i + 1}</div>`,
+        html: `<div class="tw-via-pin" title="${v.label}"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+      L.marker(ll, { icon, zIndexOffset: 200 }).bindPopup(`Via · ${v.label}`).addTo(map);
+    });
+
+    if (origin && origin.kind !== "stop") {
+      const ll = [origin.lat, origin.lng] as [number, number];
+      bounds.push(ll);
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="tw-here-pin" title="${origin.label}"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      L.marker(ll, { icon, zIndexOffset: 500 }).bindPopup(`${origin.kind === "home" ? "Home" : "You"} · ${origin.label}`).addTo(map);
+    }
+
+    stops.forEach((s: RouteStop, i: number) => {
+      const ll = [s.lat, s.lng] as [number, number];
+      bounds.push(ll);
+      const selected = s.id === selectedId;
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="tw-pin${selected ? " is-on" : ""}">${s.sequence || i + 1}</div>`,
         iconSize: [28, 28],
         iconAnchor: [14, 14],
       });
-      const marker = L.marker(ll, { icon }).bindPopup(`${i + 1}. ${points[i].city}`).addTo(map);
-      marker.on("click", () => onSelect?.(points[i].id));
+      const marker = L.marker(ll, { icon, zIndexOffset: 400 }).bindPopup(`${s.sequence || i + 1}. ${s.city}`).addTo(map);
+      marker.on("click", () => onSelect?.(s.id));
     });
 
-    let cancelled = false;
-    (async () => {
-      const here = await getLocation();
-      if (cancelled) return;
-
-      const routePoints = here ? [here, ...latlngs] : latlngs;
-      if (here) {
-        L.circleMarker(here, {
-          radius: 8,
-          color: "#1B3A4B",
-          fillColor: "#2F6FED",
-          fillOpacity: 1,
-          weight: 2,
-        }).bindTooltip("You are here").addTo(map);
-      }
-
-      const road = await roadRoute(routePoints);
-      if (cancelled) return;
-
-      if (road) {
-        L.polyline(road.line, { color: "#E07A5F", weight: 5, opacity: 0.9 }).addTo(map);
-        map.fitBounds(L.latLngBounds(road.line).pad(0.2));
-        setLabel(formatLeg(road.distanceM, road.durationS));
-      } else if (latlngs.length > 1) {
-        L.polyline(latlngs, { color: "#E07A5F", weight: 3, dashArray: "6 8" }).addTo(map);
-        map.fitBounds(L.latLngBounds(latlngs).pad(0.35));
-        setLabel("");
-      } else {
-        map.setView(latlngs[0], 11);
-        setLabel("");
-      }
-    })();
+    if (bounds.length === 1) map.setView(bounds[0], 11);
+    else if (bounds.length) map.fitBounds(L.latLngBounds(bounds).pad(0.22));
 
     const t = setTimeout(() => map.invalidateSize(), 80);
     return () => {
-      cancelled = true;
       clearTimeout(t);
       map.remove();
     };
-  }, [points, selectedId, onSelect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinKey, onSelect]);
 
-  if (!points.length) {
+  if (!stops.length && !origin) {
     return (
       <div className="rounded-[1.6rem] border border-dashed border-line p-10 text-center text-sm text-muted">
         Add destinations so TripWise can geocode them onto the map.
@@ -127,13 +127,24 @@ export function MapView({
     );
   }
 
+  const label =
+    route?.mode === "driving"
+      ? `Driving route · ${formatLeg(route.distanceKm, route.durationMin)}`
+      : route?.mode === "mixed"
+        ? `Flight then road · ${formatLeg(route.distanceKm, route.durationMin)}`
+        : route?.mode === "flight"
+          ? `Flight path · ${formatLeg(route.distanceKm, 0)}`
+          : route?.mode === "straight"
+            ? `Corridor · ${formatLeg(route.distanceKm, 0)}`
+            : "";
+
   return (
     <div>
       <div ref={ref} className="overflow-hidden rounded-[1.6rem] border border-line" style={{ height }} />
-      {label && (
-        <p className="mt-2 text-sm text-ink-soft">
-          Driving route · {label}
-        </p>
+      {label && <p className="mt-2 text-sm text-ink-soft">{label}</p>}
+      {route?.message && <p className="mt-1 text-sm text-muted">{route.message}</p>}
+      {(flight.length > 1 || (route?.mode === "mixed")) && (
+        <p className="mt-1 text-xs text-muted">Dashed navy = flight / no road. Terracotta = driving.</p>
       )}
     </div>
   );

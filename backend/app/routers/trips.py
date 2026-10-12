@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/trips", tags=["trips"])
 
 
 def _all_trips(db: Session, user: User) -> list[Trip]:
-    member_ids = db.query(TripMember.trip_id).filter(TripMember.user_id == user.id)
+    member_ids = db.query(TripMember.trip_id).filter(TripMember.user_id == user.id, TripMember.status == "active")
     return (
         db.query(Trip)
         .options(*trip_options())
@@ -94,7 +94,7 @@ def create_trip(body: TripCreate, db: Session = Depends(get_db), user: User = De
         trip_type=body.trip_type or "leisure",
         currency=body.currency or "INR",
         visibility=body.visibility or "private",
-        join_mode=body.join_mode or "request",
+        join_mode="request",
         seats=body.seats or 0,
         looking_for_ride=body.looking_for_ride or False,
         is_public=(body.visibility == "public"),
@@ -114,6 +114,7 @@ def get_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(g
 @router.put("/{trip_id}")
 def update_trip(trip_id: int, body: TripUpdate, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     trip = load_owned_trip(db, trip_id, user)
+    require_owner(trip, user)
     if body.title is not None:
         trip.title = body.title.strip()
     if body.start_date is not None:
@@ -128,9 +129,9 @@ def update_trip(trip_id: int, body: TripUpdate, db: Session = Depends(get_db), u
         trip.currency = body.currency
     if body.visibility is not None:
         trip.visibility = body.visibility
-        trip.is_public = body.visibility == "public"
+        trip.is_public = body.visibility in ("public", "unlisted")
     if body.join_mode is not None:
-        trip.join_mode = body.join_mode
+        trip.join_mode = "request"
     if body.seats is not None:
         trip.seats = body.seats
     if body.looking_for_ride is not None:

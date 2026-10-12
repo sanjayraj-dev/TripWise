@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import { eachDay, shortDate, weekday } from "../lib";
+import { eachDay, localIso, shortDate, todayIso, weekday } from "../lib";
 import type { CalEvent } from "../types";
 
 export function CalendarPage() {
@@ -13,7 +13,7 @@ export function CalendarPage() {
   const { data } = useQuery({ queryKey: ["calendar"], queryFn: () => api<CalEvent[]>("/api/calendar") });
   const monthStart = new Date(cursor + "T00:00:00");
   const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
-  const days = eachDay(cursor, monthEnd.toISOString().slice(0, 10));
+  const days = eachDay(cursor, localIso(monthEnd));
   const pad = monthStart.getDay();
 
   const byDay = useMemo(() => {
@@ -52,7 +52,7 @@ export function CalendarPage() {
         {Array.from({ length: pad }).map((_, i) => <div key={`p${i}`} />)}
         {days.map((day) => {
           const items = byDay[day] ?? [];
-          const isToday = day === new Date().toISOString().slice(0, 10);
+          const isToday = day === todayIso();
           return (
             <div key={day} className={`min-h-28 rounded-2xl border p-2 ${isToday ? "border-terracotta bg-white" : "border-line bg-white/50"}`}>
               <div className="flex justify-between text-xs">

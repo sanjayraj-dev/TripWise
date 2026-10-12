@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { Empty } from "../components/ui";
 import { TripCardView } from "../components/TripCard";
 import { ACTIVITY_TONES, daysUntil, greeting, money, prettyDate } from "../lib";
-import type { Dashboard } from "../types";
+import type { AppNotification, Dashboard } from "../types";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -13,6 +13,11 @@ export function DashboardPage() {
     queryKey: ["dashboard"],
     queryFn: () => api<Dashboard>("/api/trips/dashboard"),
   });
+  const inbox = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => api<AppNotification[]>("/api/notifications"),
+  });
+  const joinReqs = (inbox.data ?? []).filter((n) => !n.read && n.kind === "join_request");
 
   const next = data?.upcoming[0];
   const until = next ? daysUntil(next.start_date) : null;
@@ -29,6 +34,21 @@ export function DashboardPage() {
           New trip
         </Link>
       </div>
+
+      {joinReqs.length > 0 && (
+        <Link
+          to={joinReqs[0].href || "/app"}
+          className="mt-6 flex items-center justify-between gap-3 rounded-3xl border border-terracotta/30 bg-terracotta/10 px-5 py-4 hover:bg-terracotta/15"
+        >
+          <div>
+            <p className="font-medium">
+              {joinReqs.length} join request{joinReqs.length === 1 ? "" : "s"} waiting
+            </p>
+            <p className="text-sm text-ink-soft">{joinReqs[0].title}</p>
+          </div>
+          <span className="text-sm text-terracotta">Review →</span>
+        </Link>
+      )}
 
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Stat label="Trips in the book" value={String(data?.trip_count ?? "—")} />

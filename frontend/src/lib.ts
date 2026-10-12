@@ -7,6 +7,15 @@ export function money(n: number, currency = "INR") {
   return `${s}${Math.round(n).toLocaleString("en-IN")}`;
 }
 
+export function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function localIso(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseDay(iso: string | null | undefined): Date | null {
   if (!iso || typeof iso !== "string") return null;
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
@@ -62,26 +71,20 @@ export function coverFor(title: string): [string, string] {
   return palettes[h % palettes.length];
 }
 
-const COVERS = [
-  "/art/cover-japan.jpg",
-  "/art/cover-europe.jpg",
-  "/art/cover-tropics.jpg",
-  "/art/cover-city.jpg",
-  "/art/cover-alpine.jpg",
-  "/art/cover-desert.jpg",
-];
-
 export function coverArt(title: string, cities: string[] = []) {
-  const blob = `${title} ${cities.join(" ")}`.toLowerCase();
-  if (/kyoto|tokyo|osaka|japan|seoul|nara/.test(blob)) return "/art/cover-japan.jpg";
-  if (/goa|bali|phuket|hawaii|maldiv|beach|kochi/.test(blob)) return "/art/cover-tropics.jpg";
-  if (/lisbon|porto|paris|rome|prague|barcelona|madrid|vienna|europe|london/.test(blob)) return "/art/cover-europe.jpg";
-  if (/alps|swiss|norway|iceland|zermatt/.test(blob)) return "/art/cover-alpine.jpg";
-  if (/marrakech|jaipur|desert|cairo|jaisalmer/.test(blob)) return "/art/cover-desert.jpg";
-  if (/nyc|shanghai|dubai|singapore|night/.test(blob)) return "/art/cover-city.jpg";
-  let h = 0;
-  for (const c of blob) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return COVERS[h % COVERS.length];
+  const [from, to] = coverFor(`${title} ${cities.join(" ")}`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="${from}"/>
+        <stop offset="1" stop-color="${to}"/>
+      </linearGradient>
+    </defs>
+    <rect width="1600" height="900" fill="url(#g)"/>
+    <circle cx="1280" cy="160" r="300" fill="#ffffff" fill-opacity="0.08"/>
+    <circle cx="220" cy="780" r="360" fill="#000000" fill-opacity="0.14"/>
+  </svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 export function statusLabel(status: TripCard["status"]) {

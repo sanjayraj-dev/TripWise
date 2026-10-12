@@ -7,8 +7,7 @@ function AuthLayout({ title, kicker, children }: { title: string; kicker: string
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-navy p-12 text-paper lg:flex lg:flex-col">
-        <img src="/art/cover-japan.jpg" alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/70 to-navy/40" />
+        <div className="absolute inset-0 bg-gradient-to-br from-navy via-[#1b2a4a] to-[#3d2a28]" />
         <div className="relative z-10"><Logo light /></div>
         <div className="relative z-10 mt-auto max-w-md">
           <p className="text-xs uppercase tracking-[0.2em] text-terracotta">TripWise</p>

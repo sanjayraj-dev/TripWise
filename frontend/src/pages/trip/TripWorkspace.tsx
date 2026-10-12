@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { Button, ConfirmDialog, Field, Modal, inputClass } from "../../components/ui";
-import { coverArt, daysUntil, money, prettyDate, statusLabel, tripLength } from "../../lib";
+import { coverArt, daysUntil, money, prettyDate, statusLabel, todayIso, tripLength } from "../../lib";
 import type { TripDetail } from "../../types";
 import { BudgetBar } from "../../components/TripCard";
 import { RouteTab } from "./RouteTab";
@@ -23,11 +23,27 @@ export function TripWorkspace() {
   const { id } = useParams();
   const tripId = Number(id);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<Tab>("Overview");
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTab] = useState<Tab>(() =>
+    requestedTab && (TABS as readonly string[]).includes(requestedTab) ? (requestedTab as Tab) : "Overview",
+  );
+
+  useEffect(() => {
+    if (requestedTab && (TABS as readonly string[]).includes(requestedTab)) {
+      setTab(requestedTab as Tab);
+    }
+  }, [requestedTab]);
   const [edit, setEdit] = useState(false);
   const [del, setDel] = useState(false);
   const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const handle = setTimeout(() => setToast(""), 2800);
+    return () => clearTimeout(handle);
+  }, [toast]);
 
   const q = useQuery({
     queryKey: ["trip", tripId],
@@ -38,6 +54,11 @@ export function TripWorkspace() {
     qc.invalidateQueries({ queryKey: ["trip", tripId] });
     qc.invalidateQueries({ queryKey: ["trips"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
+    qc.invalidateQueries({ queryKey: ["insights"] });
+    qc.invalidateQueries({ queryKey: ["calendar"] });
+    qc.invalidateQueries({ queryKey: ["alerts", tripId] });
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+    qc.invalidateQueries({ queryKey: ["discover"] });
   };
 
   const update = useMutation({
@@ -102,32 +123,46 @@ export function TripWorkspace() {
           </div>
           <div className="flex flex-wrap gap-2 no-print">
             <button onClick={() => window.print()} className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25">Print</button>
+            {trip.my_role === "owner" && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await api<{ url: string }>(`/api/trips/${trip.id}/share`, { method: "POST" });
+                    await navigator.clipboard.writeText(`${window.location.origin}${res.url}`);
+                    setToast("Share link copied.");
+                    invalidate();
+                  } catch (e) {
+                    setToast(e instanceof Error ? e.message : "Could not share.");
+                  }
+                }}
+                className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
+              >
+                Share
+              </button>
+            )}
             <button
               onClick={async () => {
-                const res = await api<{ url: string }>(`/api/trips/${trip.id}/share`, { method: "POST" });
-                await navigator.clipboard.writeText(`${window.location.origin}${res.url}`);
-                setToast("Share link copied.");
-                invalidate();
-              }}
-              className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
-            >
-              Share
-            </button>
-            <button
-              onClick={async () => {
-                const copy = await api<{ id: number }>(`/api/trips/${trip.id}/duplicate`, { method: "POST" });
-                navigate(`/app/trips/${copy.id}`);
+                try {
+                  const copy = await api<{ id: number }>(`/api/trips/${trip.id}/duplicate`, { method: "POST" });
+                  navigate(`/app/trips/${copy.id}`);
+                } catch (e) {
+                  setToast(e instanceof Error ? e.message : "Could not duplicate.");
+                }
               }}
               className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
             >
               Duplicate
             </button>
-            <button onClick={() => setEdit(true)} className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25">
-              Edit
-            </button>
-            <button onClick={() => setDel(true)} className="rounded-full bg-black/30 px-4 py-2 text-sm hover:bg-black/40">
-              Delete
-            </button>
+            {trip.my_role === "owner" && (
+              <button onClick={() => setEdit(true)} className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25">
+                Edit
+              </button>
+            )}
+            {trip.my_role === "owner" && (
+              <button onClick={() => setDel(true)} className="rounded-full bg-black/30 px-4 py-2 text-sm hover:bg-black/40">
+                Delete
+              </button>
+            )}
           </div>
         </div>
         </div>
@@ -174,7 +209,7 @@ export function TripWorkspace() {
               end_date: fd.get("end_date"),
               estimated_budget: Number(fd.get("estimated_budget")),
               visibility: fd.get("visibility"),
-              join_mode: fd.get("join_mode"),
+              join_mode: "request",
               seats: Number(fd.get("seats") || 0),
               looking_for_ride: fd.get("looking_for_ride") === "on",
             });
@@ -194,21 +229,13 @@ export function TripWorkspace() {
           <Field label="Estimated budget">
             <input name="estimated_budget" type="number" min={0} className={inputClass} defaultValue={trip.estimated_budget} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Visibility">
-              <select name="visibility" className={inputClass} defaultValue={trip.visibility ?? "private"}>
-                <option value="private">Private</option>
-                <option value="unlisted">Unlisted link</option>
-                <option value="public">Public group</option>
-              </select>
-            </Field>
-            <Field label="Join">
-              <select name="join_mode" className={inputClass} defaultValue={trip.join_mode ?? "request"}>
-                <option value="open">Instant join</option>
-                <option value="request">Request to join</option>
-              </select>
-            </Field>
-          </div>
+          <Field label="Visibility" hint="Public groups wait for your approval before anyone joins.">
+            <select name="visibility" className={inputClass} defaultValue={trip.visibility ?? "private"}>
+              <option value="private">Private</option>
+              <option value="unlisted">Unlisted link</option>
+              <option value="public">Public group</option>
+            </select>
+          </Field>
           <Field label="Carpool seats">
             <input name="seats" type="number" min={0} className={inputClass} defaultValue={trip.seats ?? 0} />
           </Field>
@@ -250,7 +277,7 @@ function Overview({
   packedPct: number;
   onJump: (t: Tab) => void;
 }) {
-  const next = trip.activities.find((a) => a.activity_date >= new Date().toISOString().slice(0, 10)) ?? trip.activities[0];
+  const next = trip.activities.find((a) => a.activity_date >= todayIso()) ?? trip.activities[0];
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <button onClick={() => onJump("Budget")} className="rounded-3xl border border-line bg-white/50 p-5 text-left">

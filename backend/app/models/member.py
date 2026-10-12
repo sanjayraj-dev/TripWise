@@ -14,7 +14,7 @@ class TripMember(Base):
     trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(20), default="member")  # owner | member
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active | pending
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | pending | declined
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     trip: Mapped["Trip"] = relationship(back_populates="members")

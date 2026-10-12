@@ -182,6 +182,18 @@ export type Insights = {
   top_cities: { label: string; trips: number }[];
 };
 
+export type AppNotification = {
+  id: number;
+  kind: "join_request" | "join_approved" | "join_declined" | string;
+  title: string;
+  body: string;
+  trip_id: number | null;
+  actor_user_id: number | null;
+  read: boolean;
+  created_at: string | null;
+  href: string;
+};
+
 export type CalEvent = {
   id: string;
   kind: "trip" | "activity";
@@ -192,6 +204,54 @@ export type CalEvent = {
   start_time?: string | null;
   city: string;
   category?: string;
+};
+
+export type RouteStop = {
+  id: number;
+  city: string;
+  country: string;
+  label: string;
+  lat: number;
+  lng: number;
+  kind: "stop" | "here" | "home";
+  sequence: number;
+  arrivalDate?: string | null;
+  departureDate?: string | null;
+};
+
+export type RouteVia = {
+  label: string;
+  lat: number;
+  lng: number;
+  kind: "via";
+  afterSequence?: number;
+};
+
+export type RouteCorridorItem = {
+  kind: "stop" | "via" | "here" | "home";
+  id?: number;
+  label: string;
+  lat: number;
+  lng: number;
+  sequence?: number;
+};
+
+export type RouteMapPayload = {
+  origin: RouteStop | null;
+  destination: RouteStop | null;
+  stops: RouteStop[];
+  vias: RouteVia[];
+  corridor: RouteCorridorItem[];
+  geometry: [number, number][];
+  flightGeometry?: [number, number][];
+  driveGeometry?: [number, number][];
+  distanceKm: number;
+  durationMin: number;
+  legs: { fromIndex: number; toIndex: number; distanceKm: number; durationMin: number }[];
+  mode: "driving" | "straight" | "place" | "none" | "flight" | "mixed";
+  source: string;
+  message: string | null;
+  geometryPointCount: number;
 };
 
 export const EXPENSE_CATEGORIES = ["Food", "Transport", "Stay", "Activities", "Shopping", "Other"] as const;

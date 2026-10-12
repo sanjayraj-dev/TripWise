@@ -10,6 +10,7 @@ from app.models.message import ChatMessage
 from app.models.note import Note
 from app.models.packing import PackingItem
 from app.models.presence import EmergencyContact, LocationPing
+from app.models.notification import Notification
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "ChatMessage",
     "LocationPing",
     "EmergencyContact",
+    "Notification",
 ]

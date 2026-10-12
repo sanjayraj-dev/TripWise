@@ -65,6 +65,48 @@ def test_stay_crud(client, traveler):
     assert deleted.status_code == 200
 
 
+def test_insights_includes_member_trip_spend(client, traveler, other):
+    headers = auth_header(traveler)
+    trip = client.post(
+        "/api/trips",
+        json={
+            "title": "Kyoto Autumn",
+            "start_date": "2026-10-10",
+            "end_date": "2026-10-16",
+            "estimated_budget": 50000,
+            "visibility": "public",
+            "join_mode": "open",
+        },
+        headers=headers,
+    ).json()
+    dest = client.post(
+        f"/api/trips/{trip['id']}/destinations",
+        json={"city": "Kyoto", "country": "Japan", "arrival_date": "2026-10-10", "departure_date": "2026-10-16"},
+        headers=headers,
+    ).json()
+    client.post(
+        f"/api/destinations/{dest['id']}/expenses",
+        json={"amount": 12500, "category": "Food", "expense_date": "2026-10-12", "description": "Ramen"},
+        headers=headers,
+    )
+    joined = client.post(f"/api/trips/{trip['id']}/join", headers=auth_header(other))
+    assert joined.status_code == 200
+    assert joined.json()["status"] == "pending"
+    approved = client.post(
+        f"/api/trips/{trip['id']}/members/{other['user']['id']}/approve",
+        headers=headers,
+    )
+    assert approved.status_code == 200
+    insights = client.get("/api/insights", headers=auth_header(other))
+    assert insights.status_code == 200, insights.text
+    body = insights.json()
+    assert body["spent"] == 12500
+    assert body["by_category"]
+    assert body["by_category"][0]["name"] == "Food"
+    assert body["by_month"]
+    assert body["by_month"][0]["month"] == "2026-10"
+
+
 def test_expense_edit_delete(client, traveler):
     headers, trip, dest = _ready(client, traveler)
     exp = client.post(

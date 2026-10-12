@@ -15,14 +15,79 @@ from app.core.access import (
 )
 from app.core.deps import get_traveler
 from app.core.geo import forecast, nearby_places
+from app.ml.features import dest_sim
 from app.db.session import get_db
 from app.models.member import TripMember
 from app.models.message import ChatMessage
+from app.models.notification import Notification
 from app.models.presence import EmergencyContact, LocationPing
 from app.models.trip import Trip
 from app.models.user import User
 
 router = APIRouter(tags=["social"])
+
+
+def _notification_href(kind: str, trip_id: int | None) -> str:
+    if not trip_id:
+        return "/app"
+    if kind == "join_request":
+        return f"/app/trips/{trip_id}?tab=Group"
+    if kind == "join_declined":
+        return "/app/discover"
+    return f"/app/trips/{trip_id}"
+
+
+def serialize_notification(n: Notification) -> dict:
+    return {
+        "id": n.id,
+        "kind": n.kind,
+        "title": n.title,
+        "body": n.body,
+        "trip_id": n.trip_id,
+        "actor_user_id": n.actor_user_id,
+        "read": n.read_at is not None,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "href": _notification_href(n.kind, n.trip_id),
+    }
+
+
+def notify(
+    db: Session,
+    *,
+    user_id: int,
+    kind: str,
+    title: str,
+    body: str,
+    trip_id: int | None = None,
+    actor_user_id: int | None = None,
+) -> None:
+    db.add(
+        Notification(
+            user_id=user_id,
+            kind=kind,
+            title=title[:200],
+            body=body[:400],
+            trip_id=trip_id,
+            actor_user_id=actor_user_id,
+        )
+    )
+
+
+def _mark_join_requests_read(db: Session, owner_id: int, trip_id: int, actor_user_id: int) -> None:
+    now = datetime.now(timezone.utc)
+    rows = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == owner_id,
+            Notification.trip_id == trip_id,
+            Notification.actor_user_id == actor_user_id,
+            Notification.kind == "join_request",
+            Notification.read_at.is_(None),
+        )
+        .all()
+    )
+    for row in rows:
+        row.read_at = now
 
 
 @router.get("/api/discover")
@@ -46,7 +111,7 @@ def discover(
             continue
         cities = [d.city for d in t.destinations]
         blob = " ".join(cities).lower() + " " + t.title.lower()
-        if city_l and city_l not in blob:
+        if city_l and city_l not in blob and dest_sim(city, cities) < 0.6:
             continue
         card = serialize_trip_card(t, user)
         card["overlap"] = True
@@ -59,20 +124,31 @@ def join_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(
     trip = db.query(Trip).options(*trip_options()).filter(Trip.id == trip_id).first()
     if trip is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Trip not found.")
-    if trip.visibility != "public" and not trip.is_public:
+    if (trip.visibility or "") != "public":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This group is not open.")
+    if trip.user_id == user.id:
+        return {"message": "You already own this trip.", "status": "active"}
     existing = get_membership(db, trip.id, user.id)
     if existing and existing.status == "active":
         return {"message": "Already a member.", "status": "active"}
-    mode = trip.join_mode or "request"
-    st = "active" if mode == "open" else "pending"
+    if existing and existing.status == "pending":
+        return {"message": "Request already sent. Waiting for the owner.", "status": "pending"}
     if existing:
-        existing.status = st
+        existing.status = "pending"
         existing.role = "member"
     else:
-        db.add(TripMember(trip_id=trip.id, user_id=user.id, role="member", status=st))
+        db.add(TripMember(trip_id=trip.id, user_id=user.id, role="member", status="pending"))
+    notify(
+        db,
+        user_id=trip.user_id,
+        actor_user_id=user.id,
+        trip_id=trip.id,
+        kind="join_request",
+        title=f"{user.full_name} wants to join {trip.title}",
+        body="Open the Group tab to approve or decline.",
+    )
     db.commit()
-    return {"message": "Joined." if st == "active" else "Request sent to the owner.", "status": st}
+    return {"message": "Request sent. The owner will be notified.", "status": "pending"}
 
 
 @router.post("/api/trips/{trip_id}/leave")
@@ -84,6 +160,8 @@ def leave_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The owner cannot leave. Delete or transfer the trip.")
     m = get_membership(db, trip.id, user.id)
     if m:
+        if m.status == "pending":
+            _mark_join_requests_read(db, trip.user_id, trip.id, user.id)
         db.delete(m)
         db.commit()
     return {"message": "Left the group."}
@@ -102,11 +180,46 @@ def approve_member(
     trip = load_owned_trip(db, trip_id, user)
     require_owner(trip, user)
     m = get_membership(db, trip.id, member_user_id)
-    if m is None:
+    if m is None or m.status != "pending":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found.")
     m.status = "active"
+    _mark_join_requests_read(db, user.id, trip.id, member_user_id)
+    notify(
+        db,
+        user_id=member_user_id,
+        actor_user_id=user.id,
+        trip_id=trip.id,
+        kind="join_approved",
+        title=f"You're in — {trip.title}",
+        body=f"{user.full_name} approved your request. The workspace is open.",
+    )
     db.commit()
+    db.refresh(m)
     return serialize_member(m)
+
+
+@router.post("/api/trips/{trip_id}/members/{member_user_id}/decline")
+def decline_member(
+    trip_id: int, member_user_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)
+):
+    trip = load_owned_trip(db, trip_id, user)
+    require_owner(trip, user)
+    m = get_membership(db, trip.id, member_user_id)
+    if m is None or m.status != "pending":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found.")
+    m.status = "declined"
+    _mark_join_requests_read(db, user.id, trip.id, member_user_id)
+    notify(
+        db,
+        user_id=member_user_id,
+        actor_user_id=user.id,
+        trip_id=trip.id,
+        kind="join_declined",
+        title=f"Request declined — {trip.title}",
+        body="The owner declined this request. You can ask again from Discover.",
+    )
+    db.commit()
+    return {"message": "Request declined.", "status": "declined"}
 
 
 @router.delete("/api/trips/{trip_id}/members/{member_user_id}")
@@ -326,6 +439,46 @@ def sos(trip_id: int, db: Session = Depends(get_db), user: User = Depends(get_tr
     }
 
 
+@router.get("/api/notifications")
+def list_notifications(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
+    rows = (
+        db.query(Notification)
+        .filter(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(40)
+        .all()
+    )
+    return [serialize_notification(n) for n in rows]
+
+
+@router.post("/api/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)
+):
+    n = db.get(Notification, notification_id)
+    if n is None or n.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    if n.read_at is None:
+        n.read_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(n)
+    return serialize_notification(n)
+
+
+@router.post("/api/notifications/read-all")
+def mark_all_notifications_read(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
+    now = datetime.now(timezone.utc)
+    rows = (
+        db.query(Notification)
+        .filter(Notification.user_id == user.id, Notification.read_at.is_(None))
+        .all()
+    )
+    for row in rows:
+        row.read_at = now
+    db.commit()
+    return {"message": "All caught up.", "count": len(rows)}
+
+
 @router.get("/api/carpool")
 def carpool(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     trips = (
@@ -336,4 +489,12 @@ def carpool(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
         .order_by(Trip.start_date.asc())
         .all()
     )
-    return [serialize_trip_card(t, user) for t in trips if t.user_id != user.id]
+    out = []
+    for t in trips:
+        if t.user_id == user.id:
+            continue
+        mine = get_membership(db, t.id, user.id)
+        if mine and mine.status == "active":
+            continue
+        out.append(serialize_trip_card(t, user))
+    return out

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.access import assert_within_trip, load_destination, load_owned_trip, serialize_destination
 from app.core.geo import geocode
 from app.core.deps import get_traveler
+from app.core.routing import build_route_map
 from app.db.session import get_db
 from app.models.destination import Destination
 from app.models.user import User
@@ -17,6 +18,32 @@ def list_destinations(trip_id: int, db: Session = Depends(get_db), user: User = 
     trip = load_owned_trip(db, trip_id, user)
     dests = sorted(trip.destinations, key=lambda d: (d.arrival_date, d.sequence_no))
     return [serialize_destination(d) for d in dests]
+
+
+@router.get("/api/trips/{trip_id}/route-map")
+def trip_route_map(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_traveler),
+    from_lat: float | None = Query(default=None, alias="fromLat"),
+    from_lng: float | None = Query(default=None, alias="fromLng"),
+    from_label: str | None = Query(default=None, alias="fromLabel"),
+):
+    """Corridor JSON: current place (GPS or home city) → via towns → destination."""
+    trip = load_owned_trip(db, trip_id, user)
+    start = None
+    if from_lat is not None and from_lng is not None:
+        start = {
+            "lat": from_lat,
+            "lng": from_lng,
+            "label": (from_label or "You").strip() or "You",
+            "kind": "here",
+        }
+    elif (user.home_city or "").strip():
+        lat, lng = geocode(user.home_city.strip(), "")
+        if lat is not None and lng is not None:
+            start = {"lat": lat, "lng": lng, "label": user.home_city.strip(), "kind": "home"}
+    return build_route_map(trip.destinations, start)
 
 
 @router.post("/api/trips/{trip_id}/destinations", status_code=201)

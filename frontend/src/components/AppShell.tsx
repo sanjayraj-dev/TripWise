@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { CalendarDays, Compass, LayoutDashboard, LineChart, LogOut, Map, Search, Shield, UserRound } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 import { Logo } from "./ui";
 
 const travelerNav = [
@@ -51,6 +52,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className="mt-auto border-t border-white/10 pt-4">
+          {!isAdmin && <NotificationBell light />}
           <div className="px-2 text-sm font-medium">{user?.full_name}</div>
           <div className="px-2 text-xs text-paper/50">{user?.email}</div>
           <button
@@ -66,9 +68,12 @@ export function AppShell() {
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-paper/90 px-4 py-3 backdrop-blur lg:hidden">
           <Logo compact />
           <span className="serif text-lg">TripWise</span>
-          <button onClick={onLogout} className="text-sm text-ink-soft">
-            Sign out
-          </button>
+          <div className="flex items-center gap-1">
+            {!isAdmin && <NotificationBell compact />}
+            <button onClick={onLogout} className="px-2 text-sm text-ink-soft">
+              Sign out
+            </button>
+          </div>
         </header>
         <main className="mx-auto max-w-6xl px-4 py-8 pb-24 lg:px-10 lg:py-10">
           <Outlet />

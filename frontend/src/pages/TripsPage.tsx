@@ -45,7 +45,7 @@ export function TripsPage() {
       trip_type: String(fd.get("trip_type") || "leisure"),
       currency: String(fd.get("currency") || "INR"),
       visibility: String(fd.get("visibility") || "private"),
-      join_mode: String(fd.get("join_mode") || "request"),
+      join_mode: "request",
     });
   }
 
@@ -120,20 +120,12 @@ export function TripsPage() {
               </select>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Visibility">
-              <select name="visibility" className={inputClass} defaultValue="private">
-                <option value="private">Private</option>
-                <option value="public">Public group</option>
-              </select>
-            </Field>
-            <Field label="Join">
-              <select name="join_mode" className={inputClass} defaultValue="request">
-                <option value="open">Instant join</option>
-                <option value="request">Request</option>
-              </select>
-            </Field>
-          </div>
+          <Field label="Visibility" hint="Public groups show on Discover. Travelers request to join; you approve them.">
+            <select name="visibility" className={inputClass} defaultValue="private">
+              <option value="private">Private</option>
+              <option value="public">Public group</option>
+            </select>
+          </Field>
           {error && <p className="text-sm text-danger">{error}</p>}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             {create.isPending ? "Saving…" : "Create trip"}

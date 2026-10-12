@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
 import { api, setToken } from "../api/client";
 import { Button, Field, inputClass, passwordScore } from "../components/ui";
+
+type Contact = { id: number; name: string; phone: string; email: string };
 
 export function ProfilePage() {
   const { user, refresh } = useAuth();
@@ -90,6 +93,75 @@ export function ProfilePage() {
         </div>
         <Button type="submit">Update password</Button>
       </form>
+
+      <EmergencyContacts />
     </div>
+  );
+}
+
+function EmergencyContacts() {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [err, setErr] = useState("");
+  const q = useQuery({
+    queryKey: ["contacts"],
+    queryFn: () => api<Contact[]>("/api/profile/contacts"),
+  });
+  const add = useMutation({
+    mutationFn: () => api("/api/profile/contacts", { method: "POST", json: { name, phone, email } }),
+    onSuccess: () => {
+      setName("");
+      setPhone("");
+      setEmail("");
+      setErr("");
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api(`/api/profile/contacts/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),
+  });
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        add.mutate();
+      }}
+      className="mt-6 space-y-4 rounded-3xl border border-line bg-white/50 p-6"
+    >
+      <h2 className="serif text-2xl">Emergency contacts</h2>
+      <p className="text-sm text-ink-soft">SOS on a trip pings these people. Dummy dispatch for the lab — no SMS goes out.</p>
+      <ul className="space-y-2">
+        {(q.data ?? []).map((c) => (
+          <li key={c.id} className="flex items-center justify-between rounded-2xl border border-line bg-white px-3 py-2 text-sm">
+            <span>
+              {c.name}
+              {c.phone ? ` · ${c.phone}` : ""}
+              {c.email ? ` · ${c.email}` : ""}
+            </span>
+            <button type="button" className="text-xs text-danger" onClick={() => remove.mutate(c.id)}>
+              Remove
+            </button>
+          </li>
+        ))}
+        {!q.data?.length && <li className="text-sm text-muted">None yet — add one so SOS has somewhere to go.</li>}
+      </ul>
+      <Field label="Name">
+        <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required />
+      </Field>
+      <Field label="Phone">
+        <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </Field>
+      <Field label="Email">
+        <input className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      {err && <p className="text-sm text-danger">{err}</p>}
+      <Button type="submit" disabled={add.isPending}>Add contact</Button>
+    </form>
   );
 }
