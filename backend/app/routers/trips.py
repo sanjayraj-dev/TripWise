@@ -15,6 +15,9 @@ from app.core.access import (
 from app.core.deps import get_traveler
 from app.db.session import get_db
 from app.models.member import TripMember
+from app.models.message import ChatMessage
+from app.models.notification import Notification
+from app.models.presence import LocationPing
 from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.common import TripCreate, TripUpdate
@@ -151,6 +154,9 @@ def update_trip(trip_id: int, body: TripUpdate, db: Session = Depends(get_db), u
 def delete_trip(trip_id: int, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     trip = load_owned_trip(db, trip_id, user)
     require_owner(trip, user)
+    db.query(Notification).filter(Notification.trip_id == trip.id).delete(synchronize_session=False)
+    db.query(ChatMessage).filter(ChatMessage.trip_id == trip.id).delete(synchronize_session=False)
+    db.query(LocationPing).filter(LocationPing.trip_id == trip.id).delete(synchronize_session=False)
     db.delete(trip)
     db.commit()
     return {"message": "Trip deleted."}

@@ -20,7 +20,8 @@ def test_join_public_group_requires_owner_approval(client, traveler, other):
     assert trip["join_mode"] == "request"
     found = client.get("/api/discover", headers=auth_header(other))
     assert found.status_code == 200
-    assert any(t["id"] == trip["id"] for t in found.json())
+    card = next(t for t in found.json() if t["id"] == trip["id"])
+    assert "share_token" not in card or card.get("share_token") in (None, "")
 
     joined = client.post(f"/api/trips/{trip['id']}/join", headers=auth_header(other))
     assert joined.status_code == 200
@@ -114,6 +115,48 @@ def test_join_decline_notifies_requester(client, traveler, other):
     retry = client.post(f"/api/trips/{trip['id']}/join", headers=auth_header(other))
     assert retry.status_code == 200
     assert retry.json()["status"] == "pending"
+
+
+def test_delete_trip_clears_join_notifications(client, traveler, other):
+    headers = auth_header(traveler)
+    trip = client.post(
+        "/api/trips",
+        json={
+            "title": "Gone Tomorrow",
+            "start_date": "2026-12-01",
+            "end_date": "2026-12-03",
+            "estimated_budget": 1000,
+            "visibility": "public",
+        },
+        headers=headers,
+    ).json()
+    assert client.post(f"/api/trips/{trip['id']}/join", headers=auth_header(other)).json()["status"] == "pending"
+    inbox = client.get("/api/notifications", headers=headers).json()
+    assert any(n["trip_id"] == trip["id"] and n["kind"] == "join_request" for n in inbox)
+    assert client.delete(f"/api/trips/{trip['id']}", headers=headers).status_code == 200
+    after = client.get("/api/notifications", headers=headers).json()
+    assert all(n.get("trip_id") != trip["id"] for n in after)
+
+
+def test_share_location_roundtrip(client, traveler):
+    headers = auth_header(traveler)
+    trip = client.post(
+        "/api/trips",
+        json={"title": "Ping", "start_date": "2026-11-01", "end_date": "2026-11-03", "estimated_budget": 1},
+        headers=headers,
+    ).json()
+    bad = client.post(f"/api/trips/{trip['id']}/location", json={}, headers=headers)
+    assert bad.status_code == 400
+    ok = client.post(
+        f"/api/trips/{trip['id']}/location",
+        json={"lat": 12.97, "lng": 77.59},
+        headers=headers,
+    )
+    assert ok.status_code == 200
+    listed = client.get(f"/api/trips/{trip['id']}/locations", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["lat"] == 12.97
+    assert listed.json()[0]["user_id"] == traveler["user"]["id"]
 
 
 def test_discover_bangalore_finds_nearby_coorg(client, traveler, other):

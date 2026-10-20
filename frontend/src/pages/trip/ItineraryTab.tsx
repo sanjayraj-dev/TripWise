@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { Button, ConfirmDialog, Empty, Field, Modal, inputClass } from "../../components/ui";
 import { ACTIVITY_CATEGORIES, ACTIVITY_TONES, eachDay, prettyDate } from "../../lib";
@@ -391,6 +391,16 @@ function ActivityModal({
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const defaultDest = act?.destination_id ?? trip.destinations[0]?.id;
+  const [destId, setDestId] = useState<number | "">(defaultDest ?? "");
+  const [startTime, setStartTime] = useState(clock(act?.start_time));
+  useEffect(() => {
+    setDestId(defaultDest ?? "");
+    setStartTime(clock(act?.start_time));
+  }, [defaultDest, act, open]);
+  const dest = trip.destinations.find((d) => d.id === Number(destId));
+  const dateMin = dest?.arrival_date ?? trip.start_date;
+  const dateMax = dest?.departure_date ?? trip.end_date;
+  const dateDefault = act?.activity_date ?? day ?? dateMin;
   return (
     <Modal open={open} title={title} onClose={onClose} wide>
       <form onSubmit={onSubmit} className="space-y-4">
@@ -398,7 +408,13 @@ function ActivityModal({
           <input name="title" className={inputClass} defaultValue={act?.title} required />
         </Field>
         <Field label="Destination">
-          <select name="destination_id" className={inputClass} defaultValue={defaultDest} required>
+          <select
+            name="destination_id"
+            className={inputClass}
+            value={destId}
+            onChange={(e) => setDestId(Number(e.target.value))}
+            required
+          >
             {trip.destinations.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.city}
@@ -408,13 +424,28 @@ function ActivityModal({
         </Field>
         <div className="grid grid-cols-3 gap-3">
           <Field label="Date">
-            <input name="activity_date" type="date" className={inputClass} defaultValue={act?.activity_date ?? day ?? trip.start_date} required />
+            <input
+              key={`${destId}-${dateMin}-${dateMax}`}
+              name="activity_date"
+              type="date"
+              min={dateMin}
+              max={dateMax}
+              className={inputClass}
+              defaultValue={dateDefault < dateMin ? dateMin : dateDefault > dateMax ? dateMax : dateDefault}
+              required
+            />
           </Field>
           <Field label="Start">
-            <input name="start_time" type="time" className={inputClass} defaultValue={clock(act?.start_time)} />
+            <input
+              name="start_time"
+              type="time"
+              className={inputClass}
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
           </Field>
           <Field label="End">
-            <input name="end_time" type="time" className={inputClass} defaultValue={clock(act?.end_time)} />
+            <input name="end_time" type="time" min={startTime || undefined} className={inputClass} defaultValue={clock(act?.end_time)} />
           </Field>
         </div>
         <Field label="Category">

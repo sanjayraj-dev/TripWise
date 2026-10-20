@@ -19,7 +19,10 @@ export function CalendarPage() {
   const byDay = useMemo(() => {
     const map: Record<string, CalEvent[]> = {};
     for (const e of data ?? []) {
-      (map[e.date] ??= []).push(e);
+      const last = e.kind === "trip" && e.end && e.end >= e.date ? e.end : e.date;
+      for (const day of eachDay(e.date, last)) {
+        (map[day] ??= []).push(e);
+      }
     }
     return map;
   }, [data]);

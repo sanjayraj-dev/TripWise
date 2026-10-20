@@ -289,11 +289,26 @@ export function MatchFinder() {
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs uppercase tracking-wider text-muted">From</span>
-          <input className={inputClass} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <input
+            className={inputClass}
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              const v = e.target.value;
+              setStartDate(v);
+              if (endDate && v && endDate < v) setEndDate(v);
+            }}
+          />
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs uppercase tracking-wider text-muted">Until</span>
-          <input className={inputClass} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          <input
+            className={inputClass}
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
         </label>
       </div>
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
-import { Button, ConfirmDialog, Field, Modal, inputClass } from "../../components/ui";
+import { Button, ConfirmDialog, DateRangeFields, Field, Modal, inputClass } from "../../components/ui";
 import { coverArt, daysUntil, money, prettyDate, statusLabel, todayIso, tripLength } from "../../lib";
 import type { TripDetail } from "../../types";
 import { BudgetBar } from "../../components/TripCard";
@@ -218,14 +218,12 @@ export function TripWorkspace() {
           <Field label="Title">
             <input name="title" className={inputClass} defaultValue={trip.title} required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Start">
-              <input name="start_date" type="date" className={inputClass} defaultValue={trip.start_date} required />
-            </Field>
-            <Field label="End">
-              <input name="end_date" type="date" className={inputClass} defaultValue={trip.end_date} required />
-            </Field>
-          </div>
+          <DateRangeFields
+            startName="start_date"
+            endName="end_date"
+            defaultStart={trip.start_date}
+            defaultEnd={trip.end_date}
+          />
           <Field label="Estimated budget">
             <input name="estimated_budget" type="number" min={0} className={inputClass} defaultValue={trip.estimated_budget} />
           </Field>
@@ -335,29 +333,94 @@ function Overview({
           </div>
         </div>
       )}
-      <div className="lg:col-span-3 flex flex-wrap gap-2">
+      <CrewPresence tripId={trip.id} />
+    </div>
+  );
+}
+
+function CrewPresence({ tripId }: { tripId: number }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const pings = useQuery({
+    queryKey: ["locations", tripId],
+    queryFn: () =>
+      api<{ user_id: number; full_name: string; lat: number; lng: number; created_at: string | null }[]>(
+        `/api/trips/${tripId}/locations`,
+      ),
+    refetchInterval: 30000,
+  });
+
+  async function share() {
+    setNote("");
+    if (!navigator.geolocation) {
+      setNote("This browser has no geolocation. Use Chrome or Edge on localhost or HTTPS.");
+      return;
+    }
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await api(`/api/trips/${tripId}/location`, {
+            method: "POST",
+            json: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+          });
+          await qc.invalidateQueries({ queryKey: ["locations", tripId] });
+          setNote("Shared with the crew for 45 minutes.");
+        } catch (e) {
+          setNote(e instanceof Error ? e.message : "Could not save location.");
+        } finally {
+          setBusy(false);
+        }
+      },
+      (err) => {
+        setBusy(false);
+        if (err.code === 1) setNote("Location permission denied. Allow it for this site in the browser.");
+        else if (err.code === 2) setNote("Location unavailable. Check GPS / system location services.");
+        else setNote("Location timed out. Try again.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
+  }
+
+  const rows = pings.data ?? [];
+
+  return (
+    <div className="lg:col-span-3 space-y-3">
+      <div className="flex flex-wrap gap-2">
         <button
           className="rounded-full bg-danger px-4 py-2 text-sm text-white"
           onClick={async () => {
-            const res = await api<{ message: string; notified: { name: string }[]; fallback: string | null }>(`/api/trips/${trip.id}/sos`, { method: "POST" });
+            const res = await api<{ message: string; notified: { name: string }[]; fallback: string | null }>(
+              `/api/trips/${tripId}/sos`,
+              { method: "POST" },
+            );
             alert(res.fallback || `${res.message} (${res.notified.length} contacts)`);
           }}
         >
           SOS (dummy)
         </button>
         <button
-          className="rounded-full border border-line px-4 py-2 text-sm"
-          onClick={() => {
-            if (!navigator.geolocation) return alert("Geolocation not available.");
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-              await api(`/api/trips/${trip.id}/location`, { method: "POST", json: { lat: pos.coords.latitude, lng: pos.coords.longitude } });
-              alert("Location shared with the group for 45 minutes.");
-            });
-          }}
+          className="rounded-full border border-line px-4 py-2 text-sm disabled:opacity-50"
+          onClick={share}
+          disabled={busy}
         >
-          Share my location
+          {busy ? "Locating…" : "Share my location"}
         </button>
       </div>
+      {note && <p className="text-sm text-ink-soft">{note}</p>}
+      {rows.length > 0 && (
+        <ul className="rounded-2xl border border-line bg-white/60 px-4 py-3 text-sm">
+          {rows.map((r) => (
+            <li key={r.user_id} className="flex justify-between gap-3 py-1">
+              <span>{r.full_name}</span>
+              <span className="text-muted">
+                {r.lat.toFixed(3)}, {r.lng.toFixed(3)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

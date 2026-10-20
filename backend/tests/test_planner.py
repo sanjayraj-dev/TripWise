@@ -107,6 +107,85 @@ def test_insights_includes_member_trip_spend(client, traveler, other):
     assert body["by_month"][0]["month"] == "2026-10"
 
 
+def test_public_share_strips_private_fields(client, traveler):
+    headers = auth_header(traveler)
+    trip = client.post(
+        "/api/trips",
+        json={"title": "Secret Kyoto", "start_date": "2026-10-10", "end_date": "2026-10-16", "estimated_budget": 50000},
+        headers=headers,
+    ).json()
+    dest = client.post(
+        f"/api/trips/{trip['id']}/destinations",
+        json={
+            "city": "Kyoto",
+            "country": "Japan",
+            "arrival_date": "2026-10-10",
+            "departure_date": "2026-10-16",
+            "notes": "Wifi pickup at B12",
+        },
+        headers=headers,
+    ).json()
+    client.post(
+        f"/api/destinations/{dest['id']}/expenses",
+        json={"amount": 12500, "category": "Food", "expense_date": "2026-10-12", "description": "Ramen"},
+        headers=headers,
+    )
+    client.post(
+        f"/api/destinations/{dest['id']}/accommodations",
+        json={
+            "property_name": "Gion House",
+            "address": "Shijo-dori",
+            "check_in": "2026-10-10",
+            "check_out": "2026-10-16",
+            "booking_reference": "KYO-33108",
+            "contact": "+81 75 555 0142",
+        },
+        headers=headers,
+    )
+    shared = client.post(f"/api/trips/{trip['id']}/share", headers=headers)
+    assert shared.status_code == 200, shared.text
+    token = shared.json()["share_token"]
+    pub = client.get(f"/api/public/{token}")
+    assert pub.status_code == 200, pub.text
+    body = pub.json()
+    assert body["expenses"] == []
+    assert body["spent"] == 0
+    assert "documents" not in body
+    assert "notes" not in body
+    assert "members" not in body
+    assert "share_token" not in body
+    dest_pub = body["destinations"][0]
+    assert dest_pub["notes"] == ""
+    assert dest_pub["expenses"] == []
+    assert dest_pub["accommodations"] == []
+    private = client.get(f"/api/trips/{trip['id']}", headers=headers).json()
+    assert private["spent"] == 12500
+    assert private["destinations"][0]["notes"] == "Wifi pickup at B12"
+    assert private["destinations"][0]["accommodations"][0]["booking_reference"] == "KYO-33108"
+
+
+def test_expense_date_must_be_within_destination(client, traveler):
+    headers, _trip, dest = _ready(client, traveler)
+    bad = client.post(
+        f"/api/destinations/{dest['id']}/expenses",
+        json={"amount": 10, "category": "Food", "expense_date": "2026-12-31", "description": "too late"},
+        headers=headers,
+    )
+    assert bad.status_code == 400
+    ok = client.post(
+        f"/api/destinations/{dest['id']}/expenses",
+        json={"amount": 10, "category": "Food", "expense_date": "2026-12-02", "description": "in range"},
+        headers=headers,
+    )
+    assert ok.status_code == 201, ok.text
+    moved = client.put(
+        f"/api/expenses/{ok.json()['id']}",
+        json={"expense_date": "2026-12-31"},
+        headers=headers,
+    )
+    assert moved.status_code == 400
+
+
 def test_expense_edit_delete(client, traveler):
     headers, trip, dest = _ready(client, traveler)
     exp = client.post(

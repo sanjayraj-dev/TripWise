@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Logo } from "../components/ui";
-import { coverArt, money, prettyDate } from "../lib";
+import { coverArt, prettyDate } from "../lib";
 import type { TripDetail } from "../types";
 
 export function PublicShare() {
@@ -58,7 +58,7 @@ export function PublicShare() {
             ))}
           </div>
         </section>
-        <p className="text-sm text-muted">Budget remaining {money(trip.remaining, trip.currency)} · this page hides packing checklists and document numbers.</p>
+        <p className="text-sm text-muted">Shared briefing — packing lists, booking numbers, and spend stay with the crew.</p>
       </main>
     </div>
   );

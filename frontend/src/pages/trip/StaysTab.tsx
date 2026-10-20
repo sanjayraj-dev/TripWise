@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../../api/client";
-import { Button, ConfirmDialog, Empty, Field, Modal, inputClass } from "../../components/ui";
+import { Button, ConfirmDialog, DateRangeFields, Empty, Field, Modal, inputClass } from "../../components/ui";
 import { money, prettyDate } from "../../lib";
 import type { Stay, TripDetail } from "../../types";
 
@@ -77,10 +77,16 @@ export function StaysTab({ trip, onChange }: { trip: TripDetail; onChange: () =>
             </select>
           </Field>
           <Field label="Address"><input name="address" className={inputClass} defaultValue={edit?.address} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Check-in"><input name="check_in" type="date" className={inputClass} defaultValue={edit?.check_in ?? trip.start_date} required /></Field>
-            <Field label="Check-out"><input name="check_out" type="date" className={inputClass} defaultValue={edit?.check_out ?? trip.end_date} required /></Field>
-          </div>
+          <DateRangeFields
+            startName="check_in"
+            endName="check_out"
+            startLabel="Check-in"
+            endLabel="Check-out"
+            defaultStart={edit?.check_in ?? trip.start_date}
+            defaultEnd={edit?.check_out ?? trip.end_date}
+            min={trip.start_date}
+            max={trip.end_date}
+          />
           <div className="grid grid-cols-2 gap-3">
             <Field label="Booking reference"><input name="booking_reference" className={inputClass} defaultValue={edit?.booking_reference} /></Field>
             <Field label="Contact"><input name="contact" className={inputClass} defaultValue={edit?.contact} /></Field>

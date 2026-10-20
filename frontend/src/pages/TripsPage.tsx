@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { Button, Empty, Field, Modal, inputClass } from "../components/ui";
+import { Button, DateRangeFields, Empty, Field, Modal, inputClass } from "../components/ui";
 import { TripCardView } from "../components/TripCard";
 import type { TripCard, TripDetail } from "../types";
 
@@ -90,14 +90,7 @@ export function TripsPage() {
           <Field label="Title">
             <input name="title" className={inputClass} placeholder="Kyoto Autumn" required />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Start">
-              <input name="start_date" type="date" className={inputClass} required />
-            </Field>
-            <Field label="End">
-              <input name="end_date" type="date" className={inputClass} required />
-            </Field>
-          </div>
+          <DateRangeFields startName="start_date" endName="end_date" />
           <Field label="Estimated budget">
             <input name="estimated_budget" type="number" min={0} step="1" className={inputClass} defaultValue={0} />
           </Field>

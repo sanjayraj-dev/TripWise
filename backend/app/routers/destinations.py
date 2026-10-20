@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.access import assert_within_trip, load_destination, load_owned_trip, serialize_destination
@@ -81,6 +81,24 @@ def update_destination(
     dest = load_destination(db, destination_id, user)
     trip = dest.trip
     assert_within_trip(trip, body.arrival_date, body.departure_date)
+    for act in dest.activities:
+        if act.activity_date < body.arrival_date or act.activity_date > body.departure_date:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Destination dates cannot exclude existing activities.",
+            )
+    for exp in dest.expenses:
+        if exp.expense_date < body.arrival_date or exp.expense_date > body.departure_date:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Destination dates cannot exclude existing expenses.",
+            )
+    for stay in dest.accommodations:
+        if stay.check_in < body.arrival_date or stay.check_out > body.departure_date:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Destination dates cannot exclude existing stays.",
+            )
     dest.city = body.city.strip()
     dest.country = body.country.strip()
     dest.arrival_date = body.arrival_date

@@ -64,10 +64,21 @@ def public_trip(token: str, db: Session = Depends(get_db)):
     )
     if trip is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This itinerary is not public.")
-    data = serialize_trip_detail(trip)
-    for key in ("share_token", "documents", "packing", "notes", "members"):
+    return _public_briefing(serialize_trip_detail(trip))
+
+
+def _public_briefing(data: dict) -> dict:
+    """Shared page: route + days only. No spend, bookings, notes, or crew."""
+    for key in ("share_token", "documents", "packing", "notes", "members", "packing_progress"):
         data.pop(key, None)
     data["expenses"] = []
+    data["accommodations"] = []
+    data["spent"] = 0
+    data["remaining"] = data.get("estimated_budget") or 0
+    for dest in data.get("destinations") or []:
+        dest["expenses"] = []
+        dest["accommodations"] = []
+        dest["notes"] = ""
     return data
 
 

@@ -23,6 +23,18 @@ def test_invalid_dates(client, traveler):
         headers=auth_header(traveler),
     )
     assert res.status_code == 400
+    created = client.post(
+        "/api/trips",
+        json={"title": "Forward", "start_date": "2026-11-10", "end_date": "2026-11-14", "estimated_budget": 10},
+        headers=auth_header(traveler),
+    )
+    assert created.status_code == 201
+    flipped = client.put(
+        f"/api/trips/{created.json()['id']}",
+        json={"end_date": "2026-11-01"},
+        headers=auth_header(traveler),
+    )
+    assert flipped.status_code == 400
 
 
 def test_ownership_isolation(client, traveler, other):
@@ -59,6 +71,17 @@ def test_destination_and_budget(client, traveler):
     detail = client.get(f"/api/trips/{trip['id']}", headers=headers).json()
     assert detail["spent"] == 12000
     assert detail["remaining"] == 38000
+    squeezed = client.put(
+        f"/api/destinations/{dest_id}",
+        json={
+            "city": "Osaka",
+            "country": "Japan",
+            "arrival_date": "2026-10-05",
+            "departure_date": "2026-10-08",
+        },
+        headers=headers,
+    )
+    assert squeezed.status_code == 400
 
 
 def test_admin_stats_and_traveler_detail(client, traveler, admin_user):

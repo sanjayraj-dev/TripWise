@@ -119,14 +119,7 @@ export function BudgetTab({ trip, onChange }: { trip: TripDetail; onChange: () =
               {EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
             </select>
           </Field>
-          <Field label="Destination">
-            <select name="destination_id" className={inputClass} defaultValue={edit?.destination_id ?? trip.destinations[0]?.id}>
-              {trip.destinations.map((d) => <option key={d.id} value={d.id}>{d.city}</option>)}
-            </select>
-          </Field>
-          <Field label="Date">
-            <input name="expense_date" type="date" className={inputClass} defaultValue={edit?.expense_date ?? trip.start_date} required />
-          </Field>
+          <ExpenseDateFields key={edit?.id ?? "new"} trip={trip} edit={edit} />
           <Field label="Description">
             <input name="description" className={inputClass} defaultValue={edit?.description} />
           </Field>
@@ -147,6 +140,45 @@ export function BudgetTab({ trip, onChange }: { trip: TripDetail; onChange: () =
         }}
       />
     </div>
+  );
+}
+
+function ExpenseDateFields({ trip, edit }: { trip: TripDetail; edit: Expense | null }) {
+  const [destId, setDestId] = useState(edit?.destination_id ?? trip.destinations[0]?.id);
+  const dest = trip.destinations.find((d) => d.id === Number(destId)) ?? trip.destinations[0];
+  const min = dest?.arrival_date ?? trip.start_date;
+  const max = dest?.departure_date ?? trip.end_date;
+  const raw = edit?.expense_date ?? min;
+  const value = raw < min ? min : raw > max ? max : raw;
+  return (
+    <>
+      <Field label="Destination">
+        <select
+          name="destination_id"
+          className={inputClass}
+          value={destId}
+          onChange={(e) => setDestId(Number(e.target.value))}
+        >
+          {trip.destinations.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.city}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Date">
+        <input
+          key={`${destId}-${min}-${max}`}
+          name="expense_date"
+          type="date"
+          min={min}
+          max={max}
+          className={inputClass}
+          defaultValue={value}
+          required
+        />
+      </Field>
+    </>
   );
 }
 

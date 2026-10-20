@@ -105,7 +105,7 @@ export function eachDay(start: string, end: string) {
   const a = parseDay(start);
   const b = parseDay(end);
   if (!a || !b || a > b) return out;
-  for (let d = new Date(a); d <= b && out.length < 60; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(a); d <= b && out.length < 366; d.setDate(d.getDate() + 1)) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");

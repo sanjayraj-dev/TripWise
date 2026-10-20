@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.access import assert_category, get_expense, load_destination, serialize_expense
+from app.core.access import assert_category, assert_expense_date, get_expense, load_destination, serialize_expense
 from app.core.deps import get_traveler
 from app.db.session import get_db
 from app.models.expense import Expense
@@ -17,6 +17,7 @@ def add_expense(
 ):
     dest = load_destination(db, destination_id, user)
     assert_category(body.category)
+    assert_expense_date(dest, body.expense_date)
     exp = Expense(
         destination_id=dest.id,
         amount=body.amount,
@@ -58,6 +59,7 @@ def update_expense(
         exp.expense_date = body.expense_date
     if body.description is not None:
         exp.description = body.description
+    assert_expense_date(dest, exp.expense_date)
     db.commit()
     db.refresh(exp)
     return serialize_expense(exp, dest)

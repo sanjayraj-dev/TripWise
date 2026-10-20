@@ -114,6 +114,7 @@ def discover(
         if city_l and city_l not in blob and dest_sim(city, cities) < 0.6:
             continue
         card = serialize_trip_card(t, user)
+        card.pop("share_token", None)
         card["overlap"] = True
         out.append(card)
     return out
@@ -358,7 +359,14 @@ def trip_alerts(trip_id: int, db: Session = Depends(get_db), user: User = Depend
 @router.post("/api/trips/{trip_id}/location")
 def ping_location(trip_id: int, body: dict, db: Session = Depends(get_db), user: User = Depends(get_traveler)):
     load_owned_trip(db, trip_id, user)
-    ping = LocationPing(trip_id=trip_id, user_id=user.id, lat=float(body["lat"]), lng=float(body["lng"]))
+    try:
+        lat = float(body.get("lat"))
+        lng = float(body.get("lng"))
+    except (TypeError, ValueError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "lat and lng are required.")
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "lat and lng are out of range.")
+    ping = LocationPing(trip_id=trip_id, user_id=user.id, lat=lat, lng=lng)
     db.add(ping)
     db.commit()
     return {"message": "Location updated."}
@@ -496,5 +504,7 @@ def carpool(db: Session = Depends(get_db), user: User = Depends(get_traveler)):
         mine = get_membership(db, t.id, user.id)
         if mine and mine.status == "active":
             continue
-        out.append(serialize_trip_card(t, user))
+        card = serialize_trip_card(t, user)
+        card.pop("share_token", None)
+        out.append(card)
     return out

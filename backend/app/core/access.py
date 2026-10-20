@@ -100,6 +100,14 @@ def assert_activity_timing(dest: Destination, activity_date: date, start: time |
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "End time must be after start time.")
 
 
+def assert_expense_date(dest: Destination, expense_date: date) -> None:
+    if expense_date < dest.arrival_date or expense_date > dest.departure_date:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Expense date must fall within the destination dates.",
+        )
+
+
 def assert_category(category: str) -> None:
     if category not in EXPENSE_CATEGORIES:
         raise HTTPException(

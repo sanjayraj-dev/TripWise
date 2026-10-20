@@ -1,11 +1,25 @@
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
+
+
+def _enable_sqlite_fks(eng: Engine) -> Engine:
+    if eng.dialect.name != "sqlite":
+        return eng
+
+    @event.listens_for(eng, "connect")
+    def _fk(dbapi_conn, _rec):  # noqa: ARG001
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return eng
 
 
 def _make_engine():
@@ -13,7 +27,7 @@ def _make_engine():
     if url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
         kwargs = {"connect_args": connect_args, "poolclass": StaticPool} if ":memory:" in url else {"connect_args": connect_args}
-        return create_engine(url, **kwargs)
+        return _enable_sqlite_fks(create_engine(url, **kwargs))
 
     try:
         engine = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 3})
@@ -24,7 +38,7 @@ def _make_engine():
         db_file = Path(__file__).resolve().parents[2] / "tripwise.db"
         sqlite_url = f"sqlite+pysqlite:///{db_file}"
         print(f"PostgreSQL is not reachable; using SQLite at {db_file}")
-        return create_engine(sqlite_url, connect_args={"check_same_thread": False})
+        return _enable_sqlite_fks(create_engine(sqlite_url, connect_args={"check_same_thread": False}))
 
 
 engine = _make_engine()

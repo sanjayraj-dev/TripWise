@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { MapView } from "../../components/MapView";
-import { Button, ConfirmDialog, Empty, Field, Modal, inputClass } from "../../components/ui";
+import { Button, ConfirmDialog, DateRangeFields, Empty, Field, Modal, inputClass } from "../../components/ui";
 import { prettyDate } from "../../lib";
 import type { Destination, RouteMapPayload, TripDetail } from "../../types";
 
@@ -298,14 +298,16 @@ function DestModal({
         <Field label="Country">
           <input name="country" className={inputClass} defaultValue={dest?.country} required />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Arrival">
-            <input name="arrival_date" type="date" min={trip.start_date} max={trip.end_date} className={inputClass} defaultValue={dest?.arrival_date ?? trip.start_date} required />
-          </Field>
-          <Field label="Departure">
-            <input name="departure_date" type="date" min={trip.start_date} max={trip.end_date} className={inputClass} defaultValue={dest?.departure_date ?? trip.end_date} required />
-          </Field>
-        </div>
+        <DateRangeFields
+          startName="arrival_date"
+          endName="departure_date"
+          startLabel="Arrival"
+          endLabel="Departure"
+          defaultStart={dest?.arrival_date ?? trip.start_date}
+          defaultEnd={dest?.departure_date ?? trip.end_date}
+          min={trip.start_date}
+          max={trip.end_date}
+        />
         <Field label="Notes">
           <textarea name="notes" rows={2} className={inputClass} defaultValue={dest?.notes} />
         </Field>

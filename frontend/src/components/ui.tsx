@@ -42,6 +42,70 @@ export function Button({
   );
 }
 
+export function DateRangeFields({
+  startName,
+  endName,
+  startLabel = "Start",
+  endLabel = "End",
+  defaultStart = "",
+  defaultEnd = "",
+  min,
+  max,
+}: {
+  startName: string;
+  endName: string;
+  startLabel?: string;
+  endLabel?: string;
+  defaultStart?: string;
+  defaultEnd?: string;
+  min?: string;
+  max?: string;
+}) {
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(defaultEnd);
+
+  useEffect(() => {
+    setStart(defaultStart);
+    setEnd(defaultEnd);
+  }, [defaultStart, defaultEnd]);
+
+  function onStart(value: string) {
+    setStart(value);
+    if (end && value && end < value) setEnd(value);
+  }
+
+  const endMin = [min, start].filter(Boolean).sort().at(-1);
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label={startLabel}>
+        <input
+          name={startName}
+          type="date"
+          className={inputClass}
+          value={start}
+          min={min}
+          max={max}
+          onChange={(e) => onStart(e.target.value)}
+          required
+        />
+      </Field>
+      <Field label={endLabel}>
+        <input
+          name={endName}
+          type="date"
+          className={inputClass}
+          value={end}
+          min={endMin}
+          max={max}
+          onChange={(e) => setEnd(e.target.value)}
+          required
+        />
+      </Field>
+    </div>
+  );
+}
+
 export function Field({
   label,
   children,
